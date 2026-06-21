@@ -72,22 +72,6 @@ class UIConfig:
             {
                 'component': 'VForm',
                 'content': [
-                    # 插件说明
-                    {
-                        'component': 'VRow',
-                        'content': [{
-                            'component': 'VCol',
-                            'props': {'cols': 12},
-                            'content': [{
-                                'component': 'VAlert',
-                                'props': {
-                                    'type': 'info',
-                                    'variant': 'tonal',
-                                    'text': '自动搜索115网盘资源并转存缺失的电影和剧集，需配置115 Cookie和搜索服务。避免风控，固定执行周期为 8 小时。'
-                                }
-                            }]
-                        }]
-                    },
                     # 基本开关 + 执行周期
                     {
                         'component': 'VRow',
@@ -430,6 +414,24 @@ class UIConfig:
                                 'persistent-hint': True,
                                 'clearable': True
                             }}]
+                        }]
+                    },
+                    # DoVi 防转存说明（仿原 8 小时说明的 VAlert 写法）- 2026-06-21 加
+                    {
+                        'component': 'VRow',
+                        'content': [{
+                            'component': 'VCol',
+                            'props': {'cols': 12},
+                            'content': [{
+                                'component': 'VAlert',
+                                'props': {
+                                    'type': 'info',
+                                    'variant': 'tonal',
+                                    'text': '防杜比视界（DoVi / Dolby Vision / 杜比视界）转存:命中文件名即硬拒绝,任何模式下都不放行。'
+                                            '当前生效规则（可在上方输入框修改留空回退默认）:DoVi|Dolby[\\s.]?Vision|DOVI|杜比视界。'
+                                            'HDR 片源请从 PT 站下载,不依赖 115 网盘。'
+                                }
+                            }]
                         }]
                     }
                 ]
