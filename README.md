@@ -1,58 +1,101 @@
-# P115StrgmSub - 115网盘订阅追更魔改版
+# 115网盘订阅追更魔改版
 
-金愉皓定制的 MoviePilot 第三方插件,基于 [mrtian2016/MoviePilot-Plugins](https://github.com/mrtian2016/MoviePilot-Plugins) fork。
+> MoviePilot 第三方插件，基于 [mrtian2016/MoviePilot-Plugins](https://github.com/mrtian2016/MoviePilot-Plugins) 的 `P115StrgmSub`，添加自定义特性。
 
-## 🔥 魔改内容(相对于上游 v1.5.3)
+## ✨ 与官方版的区别
 
-- **DoVi(杜比视界)硬拒绝改造**:内置全局兜底排除正则 `DoVi|Dolby[\s.]?Vision|DOVI|杜比视界`,所有订阅转存前会先过这一关,命中即不放行(任何模式下)。
-- **SubscribeFilter 扩展**:新增 `include / exclude / filter` 3 个字段,支持基于文件名的硬拒绝型过滤。
-- **SyncHandler 注入**:新增 `global_exclude` 参数,所有订阅共用全局兜底规则。
-- **UI 配置面板**:新增"全局兜底排除(正则,命中即拒绝)"输入框,可在配置页直接修改兜底正则。
-- **plugin_id 保持 `P115StrgmSub`**:跟上游一致,可直接覆盖升级,`user.db` 现有 47 字段配置无缝迁移。
+| 特性 | 官方版 `P115StrgmSub` | 魔改版 |
+|---|---|---|
+| 默认 cron | `30 2,10,18 * * *`（每天 3 次） | `0 18-23 * * *`（每晚 6-11 点整点） |
+| 最小调度间隔 | 强制 ≥ 8 小时 | 无限制 |
+| DoVi 兜底排除 | ❌ 无 | ✅ `DoVi\|Dolby[\s.]?Vision\|DOVI\|杜比视界`（默认兜底，可在 UI 调） |
+| 同步触发频率 | 每天 3 次 | 每晚 6 次（18:00 / 19:00 / 20:00 / 21:00 / 22:00 / 23:00） |
 
 ## 📦 安装
 
-在 MoviePilot 的 `PLUGIN_MARKET` 环境变量中添加本仓地址:
+### 第 1 步：把本仓加到 `PLUGIN_MARKET`
 
-```
-https://github.com/jinyuhao-886/MoviePilot-Plugins/
+编辑 MP 的 `docker-compose.yml` 或 `app.env`：
+
+```bash
+PLUGIN_MARKET='<你原有的仓地址>,https://github.com/jinyuhao-886/MoviePilot-Plugins/'
 ```
 
-然后在 MoviePilot 后台 → 插件市场 → 搜索"115网盘订阅追更魔改版" → 安装。
+> **注意**：URL 末尾必须有斜杠 `/`，否则部分 MP 版本会解析失败。
+
+### 第 2 步：重启 MP → 在插件市场搜「115网盘订阅追更魔改版」→ 安装
+
+界面会显示：
+
+- **名字**：115网盘订阅追更魔改版
+- **版本**：1.5.3-modi.2
+- **作者**：jinyuhao-886
+
+## ⚙️ 配置项
+
+### 🔴 必须填（否则插件无法工作）
+
+| 字段 | 说明 | 例子 |
+|---|---|---|
+| `cookies` | 115 网盘登录 Cookie，没这个等于插件废了 | `UID=xxx; CID=xxx; SEID=xxx; KID=xxx` |
+| `save_path` | 电视剧转存到 115 网盘的目录 | `/我的接收/TV` 或 `/pt/115订阅` |
+
+### 🟡 可选填（按需启用）
+
+| 字段 | 说明 |
+|---|---|
+| `pansou_url` | PanSou 搜索服务地址，默认 `https://so.252035.xyz`（公共） |
+| `pansou_channels` | PanSou 频道列表，逗号分隔 |
+| `movie_save_path` | 电影转存路径 |
+| `notify` | 是否启用通知（默认 True） |
+| `block_system_subscribe` | 是否屏蔽系统订阅，只走 115 网盘（默认 True） |
+| `global_exclude` | 全局兜底 exclude 正则（默认 `DoVi\|Dolby[\s.]?Vision\|DOVI\|杜比视界`） |
+| `hdhive_*` | HDHive 资源站配置，不用就 disabled |
+| `nullbr_*` | NullBr 资源站配置，不用就 disabled |
+
+### 🍪 `cookies` 怎么拿？
+
+1. 浏览器登录 [115.com](https://115.com)
+2. `F12` 打开 DevTools → `Network` 标签
+3. 任意点一个请求 → 看 `Request Headers` 里的 `Cookie`
+4. 复制完整的 `Cookie` 值（约 200-300 字符）
+
+> 提示：如果同时装了 P115StrmHelper（115网盘STRM助手），**两边 cookie 共享**，填同一个就行。
+
+## 🎬 DoVi 兜底怎么调？
+
+魔改版默认内置"杜比视界硬拒绝"机制：
+
+- 任何文件名包含 `DoVi`、`Dolby Vision`、`DOVI`、`杜比视界` 的资源**不会被转存**
+- 可以在 MP 后台 → 插件配置 → 搜索「全局兜底排除」→ 改成你自己的正则
+
+**为什么默认拒绝 DoVi？** DoVi 资源在 Emby/Jellyfin 上兼容性差，老大们通常从 PT 站下载 HDR 片源（质量更好），不依赖 115 网盘。
 
 ## 🔄 升级
 
-在 MoviePilot 后台点"检查更新",会显示新版本号(本仓 git commit SHA 决定)。直接点升级即可。
+插件市场 → 搜索「115网盘订阅追更魔改版」→ 看到新版本点升级即可。
 
-⚠️ **不要同时安装本魔改版和 mrtian2016 上游版**(plugin_id 相同,会冲突)。
+⚠️ **升级不会丢配置**：本插件的 `plugin_id` 仍为 `P115StrgmSub`，所有 `user.db` 配置（48 字段）无缝迁移。
 
-## 🐛 已知问题
+## 📊 版本历史
 
-如果遇到 `pip check` 失败 + "已清理对应插件目录" 警告,说明 venv 缺少 `future` 包。请先执行:
-```bash
-docker exec moviepilot-v2 pip install future
-```
-然后重启 MP 容器。本仓的 `entrypoint_wrapper.sh` 已增强,会自动兜底装 future(见 skill)。
+### v1.5.3-modi.2 (2026-06-21)
 
-## 📝 完整工作流
+- cron 默认值改为 `0 18-23 * * *`（每晚 18-23 点整点执行）
+- 删除 `8 小时最小间隔锁`
+- `plugin_version` / `plugin_author` 改为 fork 仓标识
 
-本插件配合 [P115StrmHelper](https://github.com/DDSRem-Dev/MoviePilot-Plugins) 可实现完整的自动化追剧流程:
+### v1.5.3-modi.1 (2026-06-21)
 
-```
-MoviePilot订阅 -> 本插件搜索转存 -> STRM助手生成STRM -> 媒体库刮削 -> 播放器观看
-```
+- 首次 fork（基于 mrtian2016 官方 `P115StrgmSub` 1.5.3）
+- DoVi 兜底默认规则
+- 4 文件 DoVi 改造（`utils/file_matcher.py` / `handlers/sync.py` / `__init__.py` / `ui/config.py`）
 
-## 🛠️ 定制开发
+## 🙏 致谢
 
-所有魔改都在以下 4 个文件中(对比 upstream 看 git diff 即可):
+- 原作者 [mrtian2016](https://github.com/mrtian2016) 提供 `P115StrgmSub` 基础代码
+- MoviePilot 框架 [jxxghp/MoviePilot](https://github.com/jxxghp/MoviePilot)
 
-- `plugins.v2/p115strgmsub/utils/file_matcher.py` - SubscribeFilter + _is_rejected()
-- `plugins.v2/p115strgmsub/handlers/sync.py` - SyncHandler 加 global_exclude + effective_exclude
-- `plugins.v2/p115strgmsub/__init__.py` - 类属性 _global_exclude + init_plugin 读 + get_config 暴露
-- `plugins.v2/p115strgmsub/ui/config.py` - 全局兜底排除输入框
+## 📜 License
 
-## 致谢
-
-- 上游作者 [mrtian2016](https://github.com/mrtian2016/MoviePilot-Plugins)
-- 115网盘STRM助手 [DDSRem-Dev](https://github.com/DDSRem-Dev/MoviePilot-Plugins)
-- MoviePilot [jxxghp](https://github.com/jxxghp/MoviePilot)
+本 fork 沿用原项目许可。
