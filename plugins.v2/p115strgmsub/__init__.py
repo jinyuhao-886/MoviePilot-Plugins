@@ -56,7 +56,7 @@ class P115StrgmSub(_PluginBase):
     # 配置属性
     _enabled: bool = False
     _onlyonce: bool = False
-    _cron: str = "30 2,10,18 * * *"
+    _cron: str = "0 18-23 * * *"
     _notify: bool = False
 
     _cookies: str = ""
@@ -128,8 +128,6 @@ class P115StrgmSub(_PluginBase):
     _sync_handler: Optional[SyncHandler] = None
     _api_handler: Optional[ApiHandler] = None
 
-    _MIN_INTERVAL_HOURS: int = 8
-
     # ------------------ 调度器 ------------------
 
     def _ensure_toggle_scheduler(self):
@@ -146,36 +144,20 @@ class P115StrgmSub(_PluginBase):
             except Exception:
                 pass
 
-    # ------------------ cron间隔校验 ------------------
+    # ------------------ cron 合法性校验（轻量版,不卡 8 小时间隔） ------------------
 
     @staticmethod
-    def _cron_interval_ge_min_hours(cron_expr: str, min_hours: int) -> bool:
+    def _cron_is_valid(cron_expr: str) -> bool:
+        """仅校验 cron 表达式是否合法,不再强制最小间隔"""
         cron_expr = (cron_expr or "").strip()
         if not cron_expr:
             return False
         try:
             tz = pytz.timezone(settings.TZ)
-            trigger = CronTrigger.from_crontab(cron_expr, timezone=tz)
+            CronTrigger.from_crontab(cron_expr, timezone=tz)
+            return True
         except Exception:
             return False
-
-        now = datetime.datetime.now(tz=pytz.timezone(settings.TZ))
-        fire_times: List[datetime.datetime] = []
-        prev = None
-        current = now
-        for _ in range(12):
-            nxt = trigger.get_next_fire_time(prev, current)
-            if not nxt:
-                break
-            fire_times.append(nxt)
-            prev = nxt
-            current = nxt + datetime.timedelta(seconds=1)
-
-        if len(fire_times) < 2:
-            return True
-
-        min_delta = min(fire_times[i + 1] - fire_times[i] for i in range(len(fire_times) - 1))
-        return min_delta >= datetime.timedelta(hours=min_hours)
 
     # ------------------ 站点解析 ------------------
 
@@ -539,12 +521,11 @@ class P115StrgmSub(_PluginBase):
 
             self._cron = (config.get("cron", self._cron) or "").strip()
             if self._cron:
-                ok = self._cron_interval_ge_min_hours(self._cron, self._MIN_INTERVAL_HOURS)
-                if not ok:
+                if not self._cron_is_valid(self._cron):
                     logger.warning(
-                        f"Cron 过于频繁（要求间隔>= {self._MIN_INTERVAL_HOURS}h）：{self._cron}，已回退默认 30 */8 * * *"
+                        f"Cron 表达式无效：{self._cron}，已回退默认 0 18-23 * * *"
                     )
-                    self._cron = "30 */8 * * *"
+                    self._cron = "0 18-23 * * *"
 
             self._notify = config.get("notify", False)
             self._onlyonce = config.get("onlyonce", False)
@@ -946,7 +927,7 @@ class P115StrgmSub(_PluginBase):
 
         services = []
 
-        if self._cron and self._cron_interval_ge_min_hours(self._cron, self._MIN_INTERVAL_HOURS):
+        if self._cron and self._cron_is_valid(self._cron):
             try:
                 services.append({
                     "id": "P115StrgmSub",
@@ -956,21 +937,21 @@ class P115StrgmSub(_PluginBase):
                     "kwargs": {}
                 })
             except Exception as e:
-                logger.warning(f"Cron 表达式无效：{self._cron}，将回退 interval=8h。错误：{e}")
+                logger.warning(f"Cron 表达式无效：{self._cron}，将回退默认 0 18-23 * * *。错误：{e}")
                 services.append({
                     "id": "P115StrgmSub",
                     "name": "115网盘订阅追更服务",
-                    "trigger": "interval",
+                    "trigger": CronTrigger.from_crontab("0 18-23 * * *"),
                     "func": self.sync_subscribes,
-                    "kwargs": {"hours": 8}
+                    "kwargs": {}
                 })
         else:
             services.append({
                 "id": "P115StrgmSub",
                 "name": "115网盘订阅追更服务",
-                "trigger": "interval",
+                "trigger": CronTrigger.from_crontab("0 18-23 * * *"),
                 "func": self.sync_subscribes,
-                "kwargs": {"hours": 8}
+                "kwargs": {}
             })
 
         return services
