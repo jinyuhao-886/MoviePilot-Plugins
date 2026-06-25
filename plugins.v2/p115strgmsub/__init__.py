@@ -10,7 +10,6 @@ from typing import Optional, Any, List, Dict, Tuple
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import text
 
 from app.core.config import settings, global_vars
@@ -300,7 +299,6 @@ class P115StrgmSub(_PluginBase):
         备份所有订阅的原始站点并强制设为仅115网盘。
         - 备份数据通过 save_data 持久化，跨重启不丢失
         - 仅首次进入接管态时备份（_is_blocked=False），不重复覆盖
-        - 额外检查：如果订阅已经是 [-1] 说明已在屏蔽态，不重复备份
         """
         self._init_subscribe_handler()
         tz = pytz.timezone(settings.TZ)
@@ -308,7 +306,6 @@ class P115StrgmSub(_PluginBase):
 
         # 备份当前所有非-1订阅的站点（已屏蔽的不重复备份）
         if not self._is_blocked:
-            already_blocked = True
             backup = {}
             with SessionFactory() as db:
                 from app.db.subscribe_oper import SubscribeOper
@@ -318,16 +315,10 @@ class P115StrgmSub(_PluginBase):
                         try:
                             sites = getattr(s, "sites", None)
                             if sites is not None:
-                                # 如果任意订阅的 sites 不是 [-1]，说明不在屏蔽态
-                                if sites != [-1]:
-                                    already_blocked = False
                                 backup[str(s.id)] = sites
                         except Exception:
                             pass
-            # 如果所有订阅已经是 [-1]，说明已经是屏蔽态，不覆盖备份
-            if already_blocked:
-                logger.info(f"订阅已是屏蔽态（sites=[-1]），跳过重复备份")
-            elif backup:
+            if backup:
                 self.save_data("subscribe_sites_backup", backup)
                 logger.info(f"订阅站点备份：已保存 {len(backup)} 个订阅的原始站点")
 
@@ -337,17 +328,6 @@ class P115StrgmSub(_PluginBase):
         self._block_system_subscribe = True
         self.__update_config()
         logger.info(f"已接管系统订阅（仅115网盘）：{reason or '时间到达接管时段'}")
-        if self._notify:
-            import datetime as _dt
-            import pytz as _tz
-            _now = _dt.datetime.now(_tz.timezone(settings.TZ)).strftime("%H:%M")
-            self._post_message(
-                mtype=NotificationType.Plugin,
-                title="🔒 已进入115网盘接管",
-                text=f"所有订阅已切换为仅115网盘\n"
-                      f"当前时间：{_now}\n"
-                      f"原因：{reason or '到达接管时段'}"
-            )
 
     def _restore_and_exit_blocked(self, reason: str = ""):
         """
@@ -360,11 +340,78 @@ class P115StrgmSub(_PluginBase):
         backup = self.get_data("subscribe_sites_backup") or {}
         if not backup:
             logger.warning("订阅站点备份为空，无法恢复原始站点")
-            # 即使无备份也要切回非接管态
+            # 即使无备份也要切回非接管态，恢复为无限制（所有站点可用）
             self._is_blocked = False
             self._block_system_subscribe = False
+            with SessionFactory() as db:
+                from app.db.subscribe_oper import SubscribeOper
+                oper = SubscribeOper(db=db)
+                subs = oper.list() or []
+                cleared = 0
+                for s in subs:
+                    try:
+                        sites = getattr(s, "sites", None)
+                        # 跳过已排除的订阅和 sites 不是 [-1] 的订阅
+                        if self._is_subscribe_excluded(s.id):
+                            continue
+                        if sites == [-1]:
+                            oper.update(s.id, {"sites": None})
+                            cleared += 1
+                    except Exception:
+                        pass
             self.__update_config()
-            logger.info(f"已退出接管（无备份可恢复）：{reason}")
+            msg = f"已退出接管：{cleared} 个订阅恢复为无限制（无备份可恢复，使用默认站点）"
+            logger.info(f"{msg}（{reason or '时间到达接管结束'}）")
+            if self._notify:
+                import datetime as _dt
+                import pytz as _tz
+                _now = _dt.datetime.now(_tz.timezone(settings.TZ)).strftime("%H:%M")
+                self._post_message(
+                    mtype=NotificationType.Plugin,
+                    title="✅ 已退出115网盘接管",
+                    text=f"所有订阅已恢复为默认站点（无限制）\n"
+                          f"恢复订阅：{cleared} 个\n"
+                          f"当前时间：{_now}\n"
+                          f"原因：{reason or '到达取消屏蔽时段'}\n"
+                          f"⚠️ 无原始备份，恢复为无限制模式"
+                )
+            return
+
+        # 检查备份是否被污染（全为 [-1]）
+        all_minus_one = all(v == [-1] for v in backup.values())
+        if all_minus_one:
+            logger.warning("订阅站点备份已被污染（全为[-1]），清除备份并使用默认站点")
+            self.del_data("subscribe_sites_backup")
+            self._is_blocked = False
+            self._block_system_subscribe = False
+            with SessionFactory() as db:
+                from app.db.subscribe_oper import SubscribeOper
+                oper = SubscribeOper(db=db)
+                subs = oper.list() or []
+                cleared = 0
+                for s in subs:
+                    try:
+                        if not self._is_subscribe_excluded(s.id):
+                            sites = getattr(s, "sites", None)
+                            if sites == [-1]:
+                                oper.update(s.id, {"sites": None})
+                                cleared += 1
+                    except Exception:
+                        pass
+            self.__update_config()
+            logger.info(f"已退出接管：{cleared} 个订阅恢复为无限制（备份被污染，使用默认站点）")
+            if self._notify:
+                import datetime as _dt
+                import pytz as _tz
+                _now = _dt.datetime.now(_tz.timezone(settings.TZ)).strftime("%H:%M")
+                self._post_message(
+                    mtype=NotificationType.Plugin,
+                    title="✅ 已退出115网盘接管（备份修复）",
+                    text=f"订阅原始备份已被污染（全为[-1]）\n"
+                          f"已清除污染备份并恢复为默认站点\n"
+                          f"恢复订阅：{cleared} 个\n"
+                          f"当前时间：{_now}"
+                )
             return
 
         with SessionFactory() as db:
@@ -388,18 +435,6 @@ class P115StrgmSub(_PluginBase):
         self._block_system_subscribe = False
         self.__update_config()
         logger.info(f"已退出接管：恢复 {restored} 个订阅的原始站点（{reason or '时间到达接管结束'}）")
-        if self._notify:
-            import datetime as _dt
-            import pytz as _tz
-            _now = _dt.datetime.now(_tz.timezone(settings.TZ)).strftime("%H:%M")
-            self._post_message(
-                mtype=NotificationType.Plugin,
-                title="✅ 已退出115网盘接管",
-                text=f"所有订阅已恢复系统订阅站点\n"
-                      f"恢复订阅：{restored} 个\n"
-                      f"当前时间：{_now}\n"
-                      f"原因：{reason or '到达取消屏蔽时段'}"
-            )
 
     def _apply_block_by_time(self):
         """
@@ -963,15 +998,6 @@ class P115StrgmSub(_PluginBase):
                 "func": self.sync_subscribes,
                 "kwargs": {}
             })
-
-        # 接管态定时检查器：每5分钟检查一次订阅站点是否与当前时段匹配
-        services.append({
-            "id": "P115StrgmSub_BlockCheck",
-            "name": "接管态定时检查",
-            "trigger": IntervalTrigger(minutes=5),
-            "func": self._apply_block_by_time,
-            "kwargs": {}
-        })
 
         return services
 
