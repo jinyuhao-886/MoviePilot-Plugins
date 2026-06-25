@@ -337,6 +337,17 @@ class P115StrgmSub(_PluginBase):
         self._block_system_subscribe = True
         self.__update_config()
         logger.info(f"已接管系统订阅（仅115网盘）：{reason or '时间到达接管时段'}")
+        if self._notify:
+            import datetime as _dt
+            import pytz as _tz
+            _now = _dt.datetime.now(_tz.timezone(settings.TZ)).strftime("%H:%M")
+            self._post_message(
+                mtype=NotificationType.Plugin,
+                title="🔒 已进入115网盘接管",
+                text=f"所有订阅已切换为仅115网盘\n"
+                      f"当前时间：{_now}\n"
+                      f"原因：{reason or '到达接管时段'}"
+            )
 
     def _restore_and_exit_blocked(self, reason: str = ""):
         """
@@ -377,6 +388,18 @@ class P115StrgmSub(_PluginBase):
         self._block_system_subscribe = False
         self.__update_config()
         logger.info(f"已退出接管：恢复 {restored} 个订阅的原始站点（{reason or '时间到达接管结束'}）")
+        if self._notify:
+            import datetime as _dt
+            import pytz as _tz
+            _now = _dt.datetime.now(_tz.timezone(settings.TZ)).strftime("%H:%M")
+            self._post_message(
+                mtype=NotificationType.Plugin,
+                title="✅ 已退出115网盘接管",
+                text=f"所有订阅已恢复系统订阅站点\n"
+                      f"恢复订阅：{restored} 个\n"
+                      f"当前时间：{_now}\n"
+                      f"原因：{reason or '到达取消屏蔽时段'}"
+            )
 
     def _apply_block_by_time(self):
         """
