@@ -681,8 +681,7 @@ class P115StrgmSub(_PluginBase):
                             if not matched_rule_group:
                                 if is_tv and self._subscribe_tv_rule_group:
                                     matched_rule_group = self._subscribe_tv_rule_group
-                                    update_dict["best_version"] = 1
-                                    logger.info(f"新增订阅 {subscribe.name}：电视剧兜底→规则组「{matched_rule_group}」+ 开启洗版")
+                                    logger.info(f"新增订阅 {subscribe.name}：电视剧兜底→规则组「{matched_rule_group}」")
                                 elif not is_tv and self._subscribe_movie_rule_group:
                                     matched_rule_group = self._subscribe_movie_rule_group
                                     logger.info(f"新增订阅 {subscribe.name}：电影兜底→规则组「{matched_rule_group}」")
