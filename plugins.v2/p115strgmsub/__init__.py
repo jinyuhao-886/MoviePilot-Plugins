@@ -43,7 +43,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.2"
+    plugin_version = "1.6.3"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
@@ -135,10 +135,10 @@ class P115StrgmSub(_PluginBase):
     _global_exclude: str = r"DoVi|Dolby[\s.]?Vision|DOVI|杜比视界"
     _subscribe_auto_fill: bool = True
     # 新增订阅时自动填充的规则组（内置SubscribeGroup功能）
-    _subscribe_tv_rule_group: str = "电视剧非杜比含VIVID"
-    _subscribe_movie_rule_group: str = "电影非杜比"
+    _subscribe_tv_rule_group: str = "电视剧非杜比画质优先"
+    _subscribe_movie_rule_group: str = "电影非杜比画质优先"
     _auto_register_rules: bool = True
-    # 优先级规则组预设（none=保留用户现有, no_dovi=非杜比含VIVID, dovi=含杜比, custom=自定义）
+    # 优先级规则组预设（none=保留用户现有, no_dovi=非杜比画质优先, dovi=含杜比, custom=自定义）
     _tv_rule_group_preset: str = "none"
     _tv_rule_group_custom: str = ""
     _movie_rule_group_preset: str = "none"
@@ -940,8 +940,8 @@ class P115StrgmSub(_PluginBase):
             self._cloud_movie_local_dir = str(config.get("cloud_movie_local_dir", "") or "")
             self._cloud_movie_remote_dir = str(config.get("cloud_movie_remote_dir", "") or "")
             self._subscribe_auto_fill = bool(config.get("subscribe_auto_fill", True))
-            self._subscribe_tv_rule_group = str(config.get("subscribe_tv_rule_group", "电视剧非杜比含VIVID") or "")
-            self._subscribe_movie_rule_group = str(config.get("subscribe_movie_rule_group", "电影非杜比") or "")
+            self._subscribe_tv_rule_group = str(config.get("subscribe_tv_rule_group", "电视剧非杜比画质优先") or "")
+            self._subscribe_movie_rule_group = str(config.get("subscribe_movie_rule_group", "电影非杜比画质优先") or "")
             # 帧率/比特率评分规则
             _fp = config.get("frame_rate_pattern", None)
             if _fp:
