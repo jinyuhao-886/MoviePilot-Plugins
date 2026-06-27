@@ -1,140 +1,60 @@
 # 115网盘订阅追更魔改版
 
-> MoviePilot 第三方插件，基于 [mrtian2016/MoviePilot-Plugins](https://github.com/mrtian2016/MoviePilot-Plugins) 的 `P115StrgmSub`，添加自定义特性。
+> MoviePilot 第三方插件，基于 [mrtian2016/MoviePilot-Plugins](https://github.com/mrtian2016/MoviePilot-Plugins) 的 `P115StrgmSub` 深度改造，由 [jinyuhao-886](https://github.com/jinyuhao-886) 维护。
 
-## ✨ 与官方版的区别
+## ✨ 魔改特性
 
-| 特性 | 官方版 `P115StrgmSub` | 魔改版 |
-|---|---|---|
-| 默认 cron | `30 2,10,18 * * *`（每天 3 次） | `0 18-23 * * *`（每晚 6-11 点整点） |
-| 最小调度间隔 | 强制 ≥ 8 小时 | 无限制 |
-| DoVi 兜底排除 | ❌ 无 | ✅ `DoVi\|Dolby[\s.]?Vision\|DOVI\|杜比视界`（默认兜底，可在 UI 调） |
-| 同步触发频率 | 每天 3 次 | 每晚 6 次（18:00 / 19:00 / 20:00 / 21:00 / 22:00 / 23:00） |
-| **网盘洗版** | ❌ 无 | ✅ 115 转存后自动扫描，发现更高画质删除旧文件（回收站） |
-| **PT洗版** | ❌ 无 | ✅ PT 下载后自动对比评分，低分文件联动删除 |
-| **自动开启原生洗版** | ❌ 无 | ✅ 一键开启所有订阅的 best_version，MP 自动搜索更好资源 |
-| **屏蔽时段调度** | ❌ 无 | ✅ 支持跨天时段（如 22:00~06:00），灵活切换仅115/混合模式 |
+| 特性 | 官方版 | 魔改版 |
+|------|--------|--------|
+| 调度锁 | 强制 ≥ 8 小时 | **无限制** |
+| 默认 cron | 每天 3 次 | **每晚 18-23 点整点** |
+| DoVi 过滤 | ❌ 无 | ✅ **内置硬拒绝** |
+| **网盘洗版** | ❌ 无 | ✅ 评分对比 + 联动删除 + 事件通知 |
+| **PT洗版** | ❌ 无 | ✅ 下载前评分拦截 + 入库清理 + 事件通知 |
+| **屏蔽时段调度** | ❌ 无 | ✅ 屏蔽态仅115 / 开放态恢复全部站点 |
+| **MP 规则组管理** | ❌ 无 | ✅ 自动注入自定义规则 + 4 套预设 |
+| **内置规则自动填充** | ❌ 无 | ✅ 新增订阅自动匹配规则组（相当于内置 SubscribeGroup） |
+| **发布版本** | 1.5.3 | **1.6.2（最新）** |
 
 ## 📦 安装
 
 ### 第 1 步：把本仓加到 `PLUGIN_MARKET`
 
-编辑 MP 的 `docker-compose.yml` 或 `app.env`：
-
-```bash
-PLUGIN_MARKET='<你原有的仓地址>,https://github.com/jinyuhao-886/MoviePilot-Plugins/'
+```
+PLUGIN_MARKET='<你原有的>,https://github.com/jinyuhao-886/MoviePilot-Plugins/'
 ```
 
-> **注意**：URL 末尾必须有斜杠 `/`，否则部分 MP 版本会解析失败。
+> URL 末尾必须有 `/`。
 
-### 第 2 步：重启 MP → 在插件市场搜「115网盘订阅追更魔改版」→ 安装
+### 第 2 步：重启 MP → 插件市场搜「115网盘订阅追更魔改版」→ 安装
 
-界面会显示：
-
-- **名字**：115网盘订阅追更魔改版
-- **版本**：1.5.3-modi.4
-- **作者**：jinyuhao-886
-
-## ⚙️ 配置项
-
-### 🔴 必须填（否则插件无法工作）
-
-| 字段 | 说明 | 例子 |
-|---|---|---|
-| `cookies` | 115 网盘登录 Cookie，没这个等于插件废了 | `UID=xxx; CID=xxx; SEID=xxx; KID=xxx` |
-| `save_path` | 电视剧转存到 115 网盘的目录 | `/我的接收/TV` 或 `/pt/115订阅` |
-
-### 🟡 可选填（按需启用）
+## ⚙️ 必须配置
 
 | 字段 | 说明 |
-|---|---|
-| `pansou_url` | PanSou 搜索服务地址，默认 `https://so.252035.xyz`（公共） |
-| `pansou_channels` | PanSou 频道列表，逗号分隔 |
-| `movie_save_path` | 电影转存路径 |
-| `notify` | 是否启用通知（默认 True） |
-| `block_system_subscribe` | 是否屏蔽系统订阅，只走 115 网盘（默认 True） |
-| `global_exclude` | 全局兜底 exclude 正则（默认 `DoVi\|Dolby[\s.]?Vision\|DOVI\|杜比视界`） |
-| `hdhive_*` | HDHive 资源站配置，不用就 disabled |
+|------|------|
+| `cookies` | 115 网盘登录 Cookie |
+| `save_path` | 电视剧转存目录（如 `/我的接收/MoviePilot/TV`） |
 
-### 🔄 洗版模式（v1.5.3-modi.4 新增）
+## 📜 版本历史
 
-| 字段 | 说明 |
-|---|---|
-| `enable_cloud_upgrade` | 网盘洗版开关：115转存后自动对比评分，旧文件→回收站 |
-| `enable_pt_upgrade` | PT洗版开关：PT下载后自动打分，低分版本联动删除 |
-| `auto_best_version` | 原生洗版总开关：一键开启所有订阅 best_version |
-| `cloud_tv_local_dir` | 本地 strm 电视剧根目录（用于洗版路径映射） |
-| `cloud_tv_remote_dir` | 115 网盘电视剧目录（用于洗版删除旧文件） |
-| `min_upgrade_tiers` | 最小洗版层级差（1~5级，默认2级，避免微调就重下） |
-| `self_heal_interval` | 进度自愈间隔（分钟），自动清理已不存在的episode_priority |
+### v1.6.2
+- **内置 SubscribeGroup**：新增订阅自动填充规则组（电视剧→「电视剧非杜比含VIVID」+开启洗版，电影→「电影非杜比」），叠加 DoVi 硬拒绝
 
-### ⏰ 屏蔽时段调度
+### v1.6.1
+- **事件驱动通知**：`【PT洗版】下载升级` + `【网盘洗版】转存升级`
+- **立即删除旧文件**：转存新文件后即时清理旧 strm
+- **启动兜底清理**：保存配置/重启插件时自动触发
 
-| 字段 | 说明 |
-|---|---|
-| `unblock_start_time` | 取消屏蔽开始时间（如 17:30），此时间后订阅恢复用户原始选择 |
-| `unblock_end_time` | 取消屏蔽结束时间（如 23:59），此时间后重设仅115网盘 |
+### v1.6.0
+- PT洗版下载前拦截 + 综合评分（体积×0.75+画质×0.25）
+- 低分文件联动删除（回收站）
 
-支持跨天时段（如 22:00~06:00），配合 `block_system_subscribe` 开关灵活切换。
+### v1.5.3-modi.4
+- 完整网盘+PT双模式洗版
+- MP 规则组管理、重命名模板注入
+- 屏蔽时段调度
 
-### 🍪 `cookies` 怎么拿？
-
-1. 浏览器登录 [115.com](https://115.com)
-2. `F12` 打开 DevTools → `Network` 标签
-3. 任意点一个请求 → 看 `Request Headers` 里的 `Cookie`
-4. 复制完整的 `Cookie` 值（约 200-300 字符）
-
-> 提示：如果同时装了 P115StrmHelper（115网盘STRM助手），**两边 cookie 共享**，填同一个就行。
-
-## 🎬 DoVi 兜底怎么调？
-
-魔改版默认内置"杜比视界硬拒绝"机制：
-
-- 任何文件名包含 `DoVi`、`Dolby Vision`、`DOVI`、`杜比视界` 的资源**不会被转存**
-- 可以在 MP 后台 → 插件配置 → 搜索「全局兜底排除」→ 改成你自己的正则
-
-**为什么默认拒绝 DoVi？** DoVi 资源在 Emby/Jellyfin 上兼容性差，老大们通常从 PT 站下载 HDR 片源（质量更好），不依赖 115 网盘。
-
-## 🔄 升级
-
-插件市场 → 搜索「115网盘订阅追更魔改版」→ 看到新版本点升级即可。
-
-⚠️ **升级不会丢配置**：本插件的 `plugin_id` 仍为 `P115StrgmSub`，所有 `user.db` 配置（50+ 字段）无缝迁移。
-
-## 📊 版本历史
-
-### v1.5.3-modi.4 (2026-06-25)
-
-- **完整洗版模式**：网盘洗版 + PT洗版双模式
-  - 支持 `auto_upgrade_scan` 自动扫描多版本，保留最高分
-  - 联动删除 115 网盘旧文件（进回收站，非永久删除）
-  - 层级差阈值（1~5级），避免画质微调就重下一遍
-- **屏蔽时段调度**：跨天时段支持（如 22:00~06:00）
-- **进度自愈**：自动清理已不存在的 episode_priority 记录
-- 移除 Nullbr 搜索源
-
-### v1.5.3-modi.3 (2026-06-23)
-
-- UI 调整：PT/115 窗口时段配置
-- 洗版模式基础实现
-
-### v1.5.3-modi.2 (2026-06-21)
-
-- cron 默认值改为 `0 18-23 * * *`（每晚 18-23 点整点执行）
-- 删除 `8 小时最小间隔锁`
-- `plugin_version` / `plugin_author` 改为 fork 仓标识
-
-### v1.5.3-modi.1 (2026-06-21)
-
-- 首次 fork（基于 mrtian2016 官方 `P115StrgmSub` 1.5.3）
-- DoVi 兜底默认规则
-- 4 文件 DoVi 改造（`utils/file_matcher.py` / `handlers/sync.py` / `__init__.py` / `ui/config.py`）
-
-## 🙏 致谢
-
-- 原作者 [mrtian2016](https://github.com/mrtian2016) 提供 `P115StrgmSub` 基础代码
-- MoviePilot 框架 [jxxghp/MoviePilot](https://github.com/jxxghp/MoviePilot)
-
-## 📜 License
-
-本 fork 沿用原项目许可。
+### v1.5.3-modi.2
+- 删 8 小时调度锁
+- 默认 cron `0 18-23 * * *`
+- DoVi 兜底硬拒绝
