@@ -43,7 +43,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.6"
+    plugin_version = "1.6.7"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
@@ -848,8 +848,8 @@ class P115StrgmSub(_PluginBase):
                     f"[下载前拦截] {subscribe.name} {torrent.title} "
                     f"E{ep_num}: 候选{cand_score}分 > 现有{existing_score}分 → 放行"
                 )
-                # PT洗版通知：放行时告知用户正在升级
-                if self._notify:
+                # PT洗版通知：仅当存在旧文件（已有评分）时才提示升级
+                if self._notify and existing_score > 0:
                     season_str = season_list[0] if season_list else 1
                     self.post_message(
                         mtype=NotificationType.Plugin,
@@ -2117,13 +2117,15 @@ class P115StrgmSub(_PluginBase):
                 success = False
             finally:
                 if self._sync_handler:
-                    # 兜底清理：每日一次扫描清理旧strm（无通知，纯清理）
+                    # 自愈清理：每次同步都检查文件完整性（自愈间隔 by _self_heal_interval）
+                    import time
                     if self._enable_cloud_upgrade:
-                        import time
                         now = time.time()
                         if now - getattr(self, '_last_cloud_cleanup', 0) > 86400:
                             self._last_cloud_cleanup = now
                             self._sync_handler.auto_upgrade_scan(source='cloud')
+                    # 进度自愈：每次同步独立执行（不受 86400 限制）
+                    self._sync_handler._self_heal_cleanup()
                     # 处理到期延迟删除
                     self._sync_handler.process_expired_deletions()
                 # 同步完成后检查接管时段

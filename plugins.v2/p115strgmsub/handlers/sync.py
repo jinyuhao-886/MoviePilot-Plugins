@@ -1362,7 +1362,7 @@ class SyncHandler:
                             transferred_count += 1
                             upgrade_downloaded += 1
                             candidate_size = item.get("candidate_size", 0)
-                            new_priority[str(episode)] = {"score": new_score, "size": candidate_size}
+                            new_priority[str(episode)] = new_score
 
                             if episode in episodes_to_search:
                                 episodes_to_search.remove(episode)
