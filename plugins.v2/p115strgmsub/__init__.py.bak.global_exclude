@@ -15,7 +15,6 @@ from sqlalchemy import text
 
 from app.core.config import settings, global_vars
 from app.core.event import Event, eventmanager
-from app.schemas.event import ResourceDownloadEventData
 from app.core.module import ModuleManager
 from app.db import SessionFactory
 from app.db.subscribe_oper import SubscribeOper
@@ -23,7 +22,7 @@ from app.db.models.site import Site
 from app.db.systemconfig_oper import SystemConfigOper
 from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas.types import ChainEventType, EventType, MediaType, NotificationType, SystemConfigKey
+from app.schemas.types import EventType, MediaType, NotificationType, SystemConfigKey
 
 from .clients import PanSouClient, P115ClientManager, NullbrClient, HDHiveOpenAPIClient, HDHiveOpenAPIError
 from .handlers import SearchHandler, SyncHandler, SubscribeHandler, ApiHandler
@@ -43,7 +42,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.4"
+    plugin_version = "1.6.0"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
@@ -78,6 +77,8 @@ class P115StrgmSub(_PluginBase):
     _subscribe_filter_mode: str = "exclude"
     _exclude_subscribes: List[int] = []
     _include_subscribes: List[int] = []
+    # 全局兜底排除规则（硬拒绝型）：所有订阅转存前会先过这一关，默认杜绝杜比视界
+    _global_exclude: str = r"DoVi|Dolby[\s.]?Vision|DOVI|杜比视界"
     # 搜索源优先级（按列表顺序），为空时默认 Nullbr > HDHive > PanSou
     _search_source_order: List[str] = []
 
@@ -115,14 +116,11 @@ class P115StrgmSub(_PluginBase):
     # 洗版配置
     _auto_best_version: bool = False
     _upgrade_subscribe_ids: list = []
-    _last_scored_ids_hash: str = ""  # 上次评分过的ids hash值，用于保存配置时防重复触发
     _min_upgrade_tiers: int = 2
     _upgrade_mode: str = "smart"
     _upgrade_threshold: int = 25
     _enable_cloud_upgrade: bool = False
     _enable_pt_upgrade: bool = False
-    _last_pt_upgrade_time: float = 0.0  # 上次PT洗版扫描时间戳（TransferComplete事件防抖）
-    _upgrade_debounce_seconds: int = 600  # PT洗版防抖间隔（秒），默认10分钟
     _cloud_tv_local_dir: str = ""  # 本地电视剧strm根目录（网盘洗版用）
     _cloud_tv_remote_dir: str = ""  # 115网盘电视剧目录（网盘洗版用）
     _cloud_movie_local_dir: str = ""  # 本地电影strm根目录（网盘洗版用）
@@ -132,15 +130,8 @@ class P115StrgmSub(_PluginBase):
     _bit_rate_pattern: str = r"10bit|12bit|10-bit|12-bit"
     _vivid_pattern: str = r"HDR[._ ]?[Vv]ivid|菁彩影像|HDRVivid"
     # 自动注册MP过滤规则到系统
-    _subscribe_auto_fill: bool = True
-    # 新增订阅时自动填充的规则组（内置SubscribeGroup功能）
-    # 按二级分类配置（VSelect多选格式：category#rule_group）
-    _subscribe_category_rules: list = []
-    # 通用兜底规则组（分类未匹配时使用）
-    _subscribe_tv_rule_group: str = "电视剧非杜比画质优先"
-    _subscribe_movie_rule_group: str = "电影非杜比画质优先"
     _auto_register_rules: bool = True
-    # 优先级规则组预设（none=保留用户现有, no_dovi=非杜比画质优先, dovi=含杜比, custom=自定义）
+    # 优先级规则组预设（none=保留用户现有, no_dovi=非杜比含VIVID, dovi=含杜比, custom=自定义）
     _tv_rule_group_preset: str = "none"
     _tv_rule_group_custom: str = ""
     _movie_rule_group_preset: str = "none"
@@ -634,7 +625,6 @@ class P115StrgmSub(_PluginBase):
         保留：新订阅兜底
         - 已屏蔽系统订阅时：新订阅必拉回仅115
         - 已恢复系统订阅时：新订阅同步窗口站点（保持一致）
-        - 自动填充规则（内置 SubscribeGroup 功能）
         """
         sid = self._get_subscribe_id_from_event(event)
         if not sid:
@@ -658,42 +648,6 @@ class P115StrgmSub(_PluginBase):
                 # 取消屏蔽时段：不干预用户选择
                 logger.info(f"取消屏蔽时段：新增订阅保持用户原始站点（subscribe_id={sid}）")
 
-            # --- 自动填充规则（内置 SubscribeGroup 功能） ---
-            if self._subscribe_auto_fill:
-                try:
-                    with SessionFactory() as db:
-                        subscribe = SubscribeOper(db=db).get(sid)
-                        if subscribe:
-                            update_dict = {}
-                            is_tv = subscribe.type == MediaType.TV.value
-                            category = getattr(subscribe, 'media_category', None) or ''
-
-                            # 先尝试匹配二级分类规则
-                            matched_rule_group = None
-                            if category:
-                                cat_rules = self._parse_category_rules()
-                                if category in cat_rules:
-                                    matched_rule_group = cat_rules[category]
-                                    logger.info(f"新增订阅 {subscribe.name}：二级分类「{category}」→ 规则组「{matched_rule_group}」")
-
-                            # 未匹配到分类规则时，用通用兜底
-                            if not matched_rule_group:
-                                if is_tv and self._subscribe_tv_rule_group:
-                                    matched_rule_group = self._subscribe_tv_rule_group
-                                    logger.info(f"新增订阅 {subscribe.name}：电视剧兜底→规则组「{matched_rule_group}」")
-                                elif not is_tv and self._subscribe_movie_rule_group:
-                                    matched_rule_group = self._subscribe_movie_rule_group
-                                    logger.info(f"新增订阅 {subscribe.name}：电影兜底→规则组「{matched_rule_group}」")
-
-                            if matched_rule_group:
-                                update_dict["filter_groups"] = [matched_rule_group]
-
-                            if update_dict:
-                                SubscribeOper(db=db).update(sid, update_dict)
-                                logger.info(f"新订阅规则自动填充完成：{subscribe.name} → {update_dict}")
-                except Exception as e2:
-                    logger.error(f"新订阅规则自动填充失败：{e2}")
-
         except Exception as e:
             logger.error(f"SubscribeAdded 兜底失败：{e}")
 
@@ -709,156 +663,6 @@ class P115StrgmSub(_PluginBase):
         if not self._is_time_in_unblock():
             logger.info(f"非取消屏蔽时段：检测到订阅改动，不自动拉回以避免覆盖用户操作（subscribe_id={sid}）")
         return
-
-    @eventmanager.register(EventType.TransferComplete)
-    def on_transfer_complete(self, event: Event):
-        """媒体入库事件触发PT洗版扫描（仅开放态时段，带防抖）"""
-        if not event or not self._enabled:
-            return
-        if not self._enable_pt_upgrade:
-            return
-        # 屏蔽态时不触发
-        if self._is_blocked:
-            return
-        if not self._is_time_in_unblock():
-            return
-
-        import time
-        now = time.time()
-        elapsed = now - self._last_pt_upgrade_time
-        if elapsed < self._upgrade_debounce_seconds:
-            remaining = int(self._upgrade_debounce_seconds - elapsed)
-            logger.debug(
-                f"PT洗版防抖：距上次扫描仅 {elapsed:.0f}s，"
-                f"还需 {remaining}s，跳过"
-            )
-            return
-
-        logger.info("媒体入库事件触发PT洗版扫描...")
-        self._last_pt_upgrade_time = now
-        try:
-            if self._sync_handler:
-                self._sync_handler.auto_upgrade_scan(source='pt')
-                # PT洗版完成后处理到期的延迟删除
-                self._sync_handler.process_expired_deletions()
-        except Exception as e:
-            logger.error(f"PT洗版扫描异常：{e}")
-
-    @eventmanager.register(ChainEventType.ResourceDownload)
-    def on_resource_download(self, event: Event):
-        """下载前拦截：候选种子评分不如已有 strm 时取消下载"""
-        if not event or not self._enabled:
-            return
-        if not self._sync_handler:
-            return
-
-        event_data: ResourceDownloadEventData = event.event_data
-        if not event_data:
-            return
-
-        # 仅拦截 PT 订阅下载
-        if event_data.origin != 'Subscribe':
-            return
-
-        context = event_data.context
-        if not context:
-            return
-
-        torrent = context.torrent_info
-        media = context.media_info
-        meta = context.meta_info
-        if not torrent or not media or not meta:
-            return
-
-        tmdbid = media.tmdb_id
-        if not tmdbid:
-            return
-
-        season_list = meta.season_list or [1]
-        episode_list = event_data.episodes or meta.episode_list or []
-        if not episode_list:
-            logger.debug(f"[下载前拦截] {torrent.title} 无剧集信息，放行")
-            return
-
-        # 查找匹配的订阅
-        from app.db.subscribe_oper import SubscribeOper
-        subscribe = None
-        for season in season_list:
-            subs = SubscribeOper().list_by_tmdbid(tmdbid, season)
-            for s in subs:
-                if s.type == MediaType.TV.value and bool(getattr(s, 'best_version', False)):
-                    subscribe = s
-                    break
-            if subscribe:
-                break
-
-        if not subscribe:
-            return
-
-        # 读现有 episode_priority
-        try:
-            existing = self._sync_handler._read_ep_priority(subscribe)
-        except Exception as e:
-            logger.warning(f"[下载前拦截] 读取episode_priority失败: {e}")
-            return
-
-        # 对候选种子用 MP 规则组打分
-        filename = torrent.title or torrent.description or ''
-        filesize = torrent.size or 0
-
-        try:
-            cand_score = SyncHandler._get_mp_rule_score(
-                filename, filesize, subscribe, season_list[0]
-            )
-        except Exception as e:
-            logger.warning(f"[下载前拦截] 评分失败: {e}，放行")
-            return
-
-        # 逐集检查
-        blocked_any = False
-        for ep in episode_list:
-            try:
-                ep_num = int(ep)
-            except (ValueError, TypeError):
-                continue
-            ep_key = str(ep_num)
-            existing_score = existing.get(ep_key, 0)
-
-            if cand_score <= existing_score:
-                blocked_any = True
-                logger.info(
-                    f"[下载前拦截] {subscribe.name} {torrent.title} "
-                    f"E{ep_num}: 候选{cand_score}分 ≤ 现有{existing_score}分 → 拦截"
-                )
-            else:
-                logger.info(
-                    f"[下载前拦截] {subscribe.name} {torrent.title} "
-                    f"E{ep_num}: 候选{cand_score}分 > 现有{existing_score}分 → 放行"
-                )
-                # PT洗版通知：放行时告知用户正在升级
-                if self._notify and self._post_message:
-                    season_str = season_list[0] if season_list else 1
-                    self._post_message(
-                        mtype=NotificationType.Plugin,
-                        title="【PT洗版】下载升级",
-                        text=(
-                            f"{subscribe.name} S{season_str:02d} E{ep_num:02d}\n"
-                            f"评分 {existing_score}→{cand_score}分\n"
-                            f"种子：{torrent.title}\n"
-                            f"已提交PT下载，入库后自动清理旧文件"
-                        )
-                    )
-                blocked_any = False
-                break  # 只要有一集有提升就不拦整个包
-
-        if blocked_any:
-            event_data.cancel = True
-            event_data.source = "P115StrgmSub-下载前拦截"
-            event_data.reason = f"候选种子{torrent.title}评分{cand_score}分，不低于现有strm"
-            logger.info(
-                f"[下载前拦截] ✅ 已拦截 {subscribe.name} "
-                f"({torrent.title}): {event_data.reason}"
-            )
 
     # ------------------ init_plugin ------------------
 
@@ -894,6 +698,11 @@ class P115StrgmSub(_PluginBase):
             self._subscribe_filter_mode = config.get("subscribe_filter_mode", "exclude") or "exclude"
             self._exclude_subscribes = config.get("exclude_subscribes", []) or []
             self._include_subscribes = config.get("include_subscribes", []) or []
+            # 全局兜底排除规则（硬拒绝型）—— 默认杜绝杜比视界
+            _ge = config.get("global_exclude", None)
+            if _ge:
+                self._global_exclude = _ge
+            logger.info(f"P115StrgmSub 全局兜底 exclude: {self._global_exclude}")
             if self._subscribe_filter_mode == "include":
                 logger.info(f"订阅过滤模式：指定模式，仅处理 {len(self._include_subscribes)} 个勾选订阅")
 
@@ -940,16 +749,10 @@ class P115StrgmSub(_PluginBase):
             self._self_heal_interval = int(config.get("self_heal_interval", 10))
             self._enable_cloud_upgrade = bool(config.get("enable_cloud_upgrade", False))
             self._enable_pt_upgrade = bool(config.get("enable_pt_upgrade", False))
-            self._upgrade_debounce_seconds = int(config.get("upgrade_debounce_seconds", 600))
-            self._last_pt_upgrade_time = float(config.get("_last_pt_upgrade_time", 0.0))
             self._cloud_tv_local_dir = str(config.get("cloud_tv_local_dir", "") or "")
             self._cloud_tv_remote_dir = str(config.get("cloud_tv_remote_dir", "") or "")
             self._cloud_movie_local_dir = str(config.get("cloud_movie_local_dir", "") or "")
             self._cloud_movie_remote_dir = str(config.get("cloud_movie_remote_dir", "") or "")
-            self._subscribe_auto_fill = bool(config.get("subscribe_auto_fill", True))
-            self._subscribe_category_rules = config.get("subscribe_category_rules", []) or []
-            self._subscribe_tv_rule_group = str(config.get("subscribe_tv_rule_group", "电视剧非杜比画质优先") or "")
-            self._subscribe_movie_rule_group = str(config.get("subscribe_movie_rule_group", "电影非杜比画质优先") or "")
             # 帧率/比特率评分规则
             _fp = config.get("frame_rate_pattern", None)
             if _fp:
@@ -995,16 +798,6 @@ class P115StrgmSub(_PluginBase):
         self._apply_block_by_time()
         self._apply_best_version_all()
         self._apply_best_version_selected()
-        # 保存配置时自动触发评分：已选独立洗版订阅且ids有变化时自动批量评分
-        if self._upgrade_subscribe_ids:
-            current_hash = str(sorted(str(i) for i in self._upgrade_subscribe_ids))
-            if current_hash != self._last_scored_ids_hash:
-                logger.info(f"检测到独立洗版订阅列表有变化，自动触发整理记录评分")
-                try:
-                    self._batch_re_score()
-                except Exception as e:
-                    logger.error(f"自动评分出错: {e}")
-                self._last_scored_ids_hash = current_hash
         logger.info(f"插件初始化：屏蔽态={self._block_start_time}~{self._block_end_time}, 开放态={self._unblock_start_time}~{self._unblock_end_time}, 洗版={'开启' if self._auto_best_version else '关闭'}, 当前接管态={self._is_blocked}")
 
         # 立即运行一次
@@ -1022,28 +815,6 @@ class P115StrgmSub(_PluginBase):
             if self._onlyonce:
                 self._onlyonce = False
                 self.__update_config()
-
-    def _parse_category_rules(self) -> dict:
-        """
-        解析二级分类规则映射。
-        输入：['国产剧#电视剧非杜比画质优先', '美剧#电视剧杜比画质优先', ...]
-        输出：{'国产剧': '电视剧非杜比画质优先', '美剧': '电视剧杜比画质优先', ...}
-        同分类多条时，只保留最后一条（便于覆盖）。
-        """
-        result = {}
-        raw = self._subscribe_category_rules or []
-        if isinstance(raw, str):
-            # 兼容旧版字符串格式
-            return result
-        for item in raw:
-            if not item or '#' not in item:
-                continue
-            parts = item.split('#', 1)
-            category = parts[0].strip()
-            rule_group = parts[1].strip()
-            if category and rule_group:
-                result[category] = rule_group
-        return result
 
     def _register_filter_rules(self):
         """
@@ -1137,14 +908,27 @@ class P115StrgmSub(_PluginBase):
     )
 
     PRESET_TV_DOVI = (
-        "DOLBY & 10BIT & 60FPS & H265 & 4K "
-        "> DOLBY & 10BIT & H265 & 4K "
-        "> DOLBY & H265 & 4K "
+        "DOLBY & VIVID & 10BIT & 60FPS & H265 & 4K "
+        "> DOLBY & VIVID & 10BIT & H265 & 4K "
+        "> DOLBY & VIVID & H265 & 4K "
         "> DOLBY & HDR & H265 & 4K "
         "> DOLBY & HDR & H264 & 4K "
         "> DOLBY & 4K "
         "> DOLBY & H265 & 1080P "
-        "> DOLBY & 1080P"
+        "> DOLBY & 1080P "
+        "> !DOLBY & VIVID & 10BIT & 60FPS & H265 & 4K "
+        "> !DOLBY & VIVID & 10BIT & H265 & 4K "
+        "> !DOLBY & VIVID & H265 & 4K "
+        "> !DOLBY & HDR & H265 & 4K "
+        "> !DOLBY & HDR & H264 & 4K "
+        "> !DOLBY & SDR & H265 & 4K "
+        "> !DOLBY & SDR & H264 & 4K "
+        "> !DOLBY & 4K "
+        "> !DOLBY & HDR & H265 & 1080P "
+        "> !DOLBY & HDR & H264 & 1080P "
+        "> !DOLBY & SDR & H265 & 1080P "
+        "> !DOLBY & SDR & H264 & 1080P "
+        "> !DOLBY & 1080P"
     )
 
     PRESET_MOVIE_NO_DOVI = (
@@ -1231,53 +1015,94 @@ class P115StrgmSub(_PluginBase):
 
             changed = False
 
-            # === 一次性创建全部4套预设规则组 ===
-            preset_configs = [
-                # (name, media_type, rule_string)
-                ("电视剧非杜比画质优先", "电视剧", self.PRESET_TV_NO_DOVI),
-                ("电视剧杜比画质优先", "电视剧", self.PRESET_TV_DOVI),
-                ("电影含杜比画质优先", "电影", self.PRESET_MOVIE_DOVI),
-                ("电影非杜比画质优先", "电影", self.PRESET_MOVIE_NO_DOVI),
-            ]
-            for group_name, media_type, rule_string in preset_configs:
-                result = self._upsert_rule_group(
-                    groups, group_name, media_type, rule_string
-                )
-                if result:
-                    changed = True
-                    if group_name not in subscribe_refs:
-                        subscribe_refs.append(group_name)
-                    if group_name not in best_refs:
-                        best_refs.append(group_name)
+            # === 处理电视剧规则组 ===
+            tv_result = self._apply_one_preset(
+                groups, "电视剧",
+                self._tv_rule_group_preset, self._tv_rule_group_custom,
+                self.PRESET_TV_NO_DOVI, self.PRESET_TV_DOVI,
+                "非杜比含VIVID（电视剧）", "含杜比（电视剧）"
+            )
+            if tv_result:
+                groups, tv_name = tv_result
+                changed = True
+                logger.info(f"电视剧规则组已设为: {tv_name}")
+
+            # === 处理电影规则组 ===
+            movie_result = self._apply_one_preset(
+                groups, "电影",
+                self._movie_rule_group_preset, self._movie_rule_group_custom,
+                self.PRESET_MOVIE_NO_DOVI, self.PRESET_MOVIE_DOVI,
+                "非杜比含VIVID（电影）", "含杜比（电影）"
+            )
+            if movie_result:
+                groups, movie_name = movie_result
+                changed = True
+                logger.info(f"电影规则组已设为: {movie_name}")
 
             if changed:
                 oper.set(SystemConfigKey.UserFilterRuleGroups, groups)
+                # 更新订阅和洗版引用的规则组名
+                if tv_result:
+                    tv_name = tv_result[1]
+                    if tv_name not in subscribe_refs:
+                        subscribe_refs.append(tv_name)
+                    if tv_name not in best_refs:
+                        best_refs.append(tv_name)
+                if movie_result:
+                    movie_name = movie_result[1]
+                    if movie_name not in subscribe_refs:
+                        subscribe_refs.append(movie_name)
+                    if movie_name not in best_refs:
+                        best_refs.append(movie_name)
                 oper.set(SystemConfigKey.SubscribeFilterRuleGroups, subscribe_refs)
                 oper.set(SystemConfigKey.BestVersionFilterRuleGroups, best_refs)
-                logger.info(f"4套预设规则组已全部写入，订阅引用: {subscribe_refs}")
+                logger.info(f"优先级规则组已写入，订阅引用: {subscribe_refs}")
         except Exception as e:
             logger.error(f"应用规则组预设失败: {e}")
 
-    def _upsert_rule_group(self, groups, group_name, media_type, rule_string):
-        """查找或创建规则组，返回 True 表示有变更"""
+    def _apply_one_preset(self, groups, media_type, preset, custom_str,
+                          no_dovi_rule_string, dovi_rule_string,
+                          no_dovi_name, dovi_name):
+        """
+        返回 (更新后的groups, 规则组名) 或 None（无变更）
+        """
+        if preset == "none":
+            return None
+
+        if preset == "custom":
+            if not custom_str.strip():
+                logger.warning(f"{media_type} 自定义规则组为空，跳过")
+                return None
+            rule_string = custom_str.strip()
+            group_name = f"自定义（{media_type}）"
+        elif preset == "no_dovi":
+            rule_string = no_dovi_rule_string
+            group_name = no_dovi_name
+        elif preset == "dovi":
+            rule_string = dovi_rule_string
+            group_name = dovi_name
+        else:
+            return None
+
+        # 查找或更新规则组
         for g in groups:
             if g.get("name") == group_name:
                 if g.get("rule_string", "").strip() == rule_string.strip():
-                    return False  # 无变化
+                    return None  # 无变化
                 g["rule_string"] = rule_string
                 g["media_type"] = media_type
                 logger.info(f"更新规则组: {group_name}")
-                return True
-        # 不存在则新增
+                return (groups, group_name)
+
+        # 新增规则组
         groups.append({
             "name": group_name,
+            "media_type": media_type,
+            "category": "",
             "rule_string": rule_string,
-            "media_type": media_type
         })
-        logger.info(f"新建规则组: {group_name}")
-        return True
-
-    # _apply_one_preset 已废弃，全部预设一次性创建
+        logger.info(f"新增规则组: {group_name}")
+        return (groups, group_name)
 
     def _apply_naming_rules(self):
         """
@@ -1468,6 +1293,7 @@ class P115StrgmSub(_PluginBase):
             post_message_func=self.post_message,
             get_data_func=self.get_data,
             save_data_func=self.save_data,
+            global_exclude=self._global_exclude,
             min_upgrade_tiers=self._min_upgrade_tiers,
             upgrade_mode=self._upgrade_mode,
             upgrade_threshold=self._upgrade_threshold,
@@ -1483,15 +1309,6 @@ class P115StrgmSub(_PluginBase):
             bit_rate_pattern=self._bit_rate_pattern,
             vivid_pattern=self._vivid_pattern
         )
-
-        # 启动时触发一次兜底清理（保存配置即触发，相当于手动开关）
-        if self._enabled and self._sync_handler and self._enable_cloud_upgrade:
-            import time
-            self._last_cloud_cleanup = time.time()
-            try:
-                self._sync_handler.auto_upgrade_scan(source='cloud')
-            except Exception as e:
-                logger.error(f"启动兜底清理异常：{e}")
 
         self._api_handler = ApiHandler(
             pansou_client=self._pansou_client,
@@ -1546,6 +1363,7 @@ class P115StrgmSub(_PluginBase):
             "subscribe_filter_mode": self._subscribe_filter_mode,
             "exclude_subscribes": self._exclude_subscribes,
             "include_subscribes": self._include_subscribes,
+            "global_exclude": self._global_exclude,
             "block_system_subscribe": self._block_system_subscribe,
             "block_start_time": self._block_start_time,
             "block_end_time": self._block_end_time,
@@ -1558,7 +1376,6 @@ class P115StrgmSub(_PluginBase):
             "skip_other_season_dirs": self._skip_other_season_dirs,
             "enable_cloud_upgrade": self._enable_cloud_upgrade,
             "enable_pt_upgrade": self._enable_pt_upgrade,
-            "upgrade_debounce_seconds": self._upgrade_debounce_seconds,
             "cloud_tv_local_dir": self._cloud_tv_local_dir,
             "cloud_tv_remote_dir": self._cloud_tv_remote_dir,
             "cloud_movie_local_dir": self._cloud_movie_local_dir,
@@ -1570,10 +1387,6 @@ class P115StrgmSub(_PluginBase):
             "frame_rate_pattern": self._frame_rate_pattern,
             "bit_rate_pattern": self._bit_rate_pattern,
             "vivid_pattern": self._vivid_pattern,
-            "subscribe_auto_fill": self._subscribe_auto_fill,
-            "subscribe_category_rules": self._subscribe_category_rules,
-            "subscribe_tv_rule_group": self._subscribe_tv_rule_group,
-            "subscribe_movie_rule_group": self._subscribe_movie_rule_group,
         })
 
     # ------------------ stop ------------------
@@ -1630,12 +1443,6 @@ class P115StrgmSub(_PluginBase):
                 "endpoint": self.api_apply_filter_rules,
                 "methods": ["POST"],
                 "summary": "手动应用MP过滤规则（自定义规则+优先级规则组预设）"
-            },
-            {
-                "path": "/batch_re_score",
-                "endpoint": self.api_batch_re_score,
-                "methods": ["POST"],
-                "summary": "整理记录评分：对已选订阅已有strm批量评分写入episode_priority"
             }
         ]
     
@@ -1857,227 +1664,6 @@ class P115StrgmSub(_PluginBase):
             "message": log_capture.getvalue()
         }
 
-    def _batch_re_score(self) -> dict:
-        """
-        批量评分：对已选独立洗版订阅的已有转存记录评分并写入 episode_priority。
-        保存配置时自动触发，也可通过 API 调用。
-        :return: {"success": bool, "message": str, "results": [str, ...]}
-        """
-        import re
-        import json
-        from app.db import SessionFactory
-        from app.db.subscribe_oper import SubscribeOper
-        from app.db.transferhistory_oper import TransferHistoryOper
-        from app.schemas.types import MediaType
-
-        subscribe_ids = self._upgrade_subscribe_ids
-        if not subscribe_ids:
-            msg = "未选择任何订阅，请先在「单独开启洗版的订阅」中选择要评分的订阅"
-            logger.info(f"[自动评分] {msg}")
-            return {"success": False, "message": msg, "results": []}
-
-        # 收集所有订阅
-        with SessionFactory() as db:
-            oper = SubscribeOper(db=db)
-            all_subs = oper.list() or []
-
-        target_subs = [s for s in all_subs if s.id in subscribe_ids and s.type == MediaType.TV.value]
-        if not target_subs:
-            msg = "选择的订阅中没有电视剧订阅，或订阅不存在"
-            logger.info(f"[自动评分] {msg}")
-            return {"success": False, "message": msg, "results": []}
-
-        total_processed = 0
-        total_updated = 0
-        results = []
-
-        for sub in target_subs:
-            try:
-                tmdbid = getattr(sub, 'tmdbid', None) or getattr(sub, 'tvdbid', None)
-                season = sub.season or 1
-                sub_name = f"{sub.name} S{season:02d}"
-
-                # 查询该订阅的所有转存记录
-                with SessionFactory() as db:
-                    th_oper = TransferHistoryOper(db=db)
-                    records = th_oper.list_by_tmdbid(tmdbid) if hasattr(th_oper, 'list_by_tmdbid') else []
-
-                if not records:
-                    # 尝试模糊查title
-                    with SessionFactory() as db:
-                        from sqlalchemy import text
-                        rows = db.execute(
-                            text("SELECT * FROM transferhistory WHERE title LIKE :t AND seasons LIKE :s ORDER BY id DESC LIMIT 50"),
-                            {"t": f"%{sub.name}%", "s": f"%{season}%"}
-                        ).fetchall()
-                        records = rows if rows else []
-
-                if not records:
-                    results.append(f"{sub_name}: 无转存记录（请先转存后再评分）")
-                    continue
-
-                # 对每条记录评分
-                episode_scores = {}
-                for rec in records:
-                    src_fileitem = getattr(rec, 'src_fileitem', None) or getattr(rec, 'src', None)
-                    episodes_str = getattr(rec, 'episodes', None)
-                    if not src_fileitem or not episodes_str:
-                        continue
-
-                    if isinstance(src_fileitem, str):
-                        try:
-                            src_data = json.loads(src_fileitem)
-                        except:
-                            src_data = {}
-                    else:
-                        src_data = src_fileitem
-
-                    filename = src_data.get('name', src_data.get('basename', ''))
-                    filesize = src_data.get('size', 0)
-
-                    if not filename:
-                        continue
-
-                    # 解析集号
-                    ep_match = re.search(r'S?0*E(\d+)', episodes_str) if episodes_str else None
-                    if ep_match:
-                        episodes_list = [int(ep_match.group(1))]
-                    else:
-                        try:
-                            episodes_list = json.loads(episodes_str) if episodes_str else []
-                        except:
-                            episodes_list = []
-
-                    # ★ 使用 MP 原生规则组评分（与 PT 选种同源）
-                    # 这样 strm 文件和 PT 种子的评分在同一条规则尺上，
-                    # 同品质的 strm 不会被低品质 PT 种子"升级"
-                    from app.schemas import TorrentInfo
-                    from app.core.context import MediaInfo
-                    from app.modules.filter import FilterModule
-
-                    try:
-                        # 获取订阅的规则组（优先用订阅自带的，否则用系统默认洗版规则组）
-                        rule_group_names = getattr(sub, 'filter_groups', None) or []
-                        if not rule_group_names:
-                            from app.db.systemconfig_oper import SystemConfigOper, SystemConfigKey
-                            rule_group_names = SystemConfigOper().get(
-                                SystemConfigKey.BestVersionFilterRuleGroups) or []
-
-                        # 创建最小 MediaInfo（只需 type 字段供规则组过滤）
-                        fake_mediainfo = MediaInfo(type=MediaType(sub.type))
-
-                        # 构造假 TorrentInfo 走 MP 过滤器
-                        fake_torrent = TorrentInfo(
-                            title=filename,
-                            size=filesize or 0,
-                            description='',
-                            labels=[]
-                        )
-
-                        filter_module = FilterModule()
-                        filter_module.init_module()
-                        matched = filter_module.filter_torrents(
-                            rule_groups=rule_group_names,
-                            torrent_list=[fake_torrent],
-                            mediainfo=fake_mediainfo
-                        )
-
-                        if matched:
-                            score = matched[0].pri_order
-                            if score is None or score < 60:
-                                score = 60
-                            logger.debug(
-                                f'[自动评分] {sub_name} E{episodes_list} '
-                                f'规则组评分={score} (规则组={rule_group_names})')
-                        else:
-                            # 规则组无匹配 → 保底分
-                            score = 60
-                            logger.debug(
-                                f'[自动评分] {sub_name} E{episodes_list} '
-                                f'未匹配到任何规则组规则 → 保底60分')
-                    except Exception as e:
-                        logger.warning(f'[自动评分] 规则组评分失败（回退基础评分）: {e}')
-                        # 回退：简单的分辨率+编码基础评分
-                        score = 40
-                        if re.search(r'2160p|4K|UHD', filename, re.IGNORECASE):
-                            score += 20
-                        elif re.search(r'1080p', filename, re.IGNORECASE):
-                            score += 10
-                        if re.search(r'HDR', filename, re.IGNORECASE):
-                            score += 12
-                        if re.search(r'H265|HEVC|x265|H\.265', filename, re.IGNORECASE):
-                            score += 10
-                        size_gb = filesize / (1024**3) if filesize else 0
-                        if size_gb >= 5:
-                            score += 15
-                        elif size_gb >= 3:
-                            score += 12
-                        elif size_gb >= 2:
-                            score += 8
-                        elif size_gb >= 1:
-                            score += 5
-                        score = min(score, 100)
-
-                    for ep in episodes_list:
-                        ep_key = str(ep)
-                        if ep_key not in episode_scores or score > episode_scores[ep_key]:
-                            episode_scores[ep_key] = score
-
-                if not episode_scores:
-                    results.append(f"{sub_name}: 未能从转存记录中解析到可评分的文件")
-                    continue
-
-                # ★ 合并现有 episode_priority：已有评分的集数不覆盖（避免小文件顶掉大文件）
-                existing_ep = getattr(sub, 'episode_priority', None)
-                if isinstance(existing_ep, str):
-                    try:
-                        existing_ep = json.loads(existing_ep)
-                    except:
-                        existing_ep = None
-                if isinstance(existing_ep, dict):
-                    for ek, ev in existing_ep.items():
-                        if isinstance(ev, dict):
-                            old_score = int(ev.get("score", 0))
-                        elif isinstance(ev, (int, float)):
-                            old_score = int(ev)
-                        else:
-                            old_score = 0
-                        # ★ 已有评分的保留原值，只补缺失的集
-                        if ek in existing_ep and old_score > 0:
-                            if ek not in episode_scores:
-                                episode_scores[ek] = old_score
-                        elif ek not in episode_scores or old_score > episode_scores[ek]:
-                            episode_scores[ek] = old_score
-
-                # 写入 episode_priority（纯int格式，MP API验证要求）
-                SubscribeOper().update(sub.id, {"episode_priority": episode_scores})
-                total_updated += len(episode_scores)
-                total_processed += 1
-                ep_list = sorted(episode_scores.keys(), key=int)
-                score_detail = ", ".join([f"E{e}={episode_scores[e]}分" for e in ep_list[:10]])
-                if len(ep_list) > 10:
-                    score_detail += f"... 共{len(ep_list)}集"
-                results.append(f"{sub_name}: 已评分{len(ep_list)}集 ({score_detail})")
-
-            except Exception as e:
-                results.append(f"{sub.name} S{sub.season or 1}: 出错 - {e}")
-                logger.error(f"[自动评分] 批量评分出错 {sub.name}: {e}")
-
-        summary = f"处理了 {total_processed}/{len(target_subs)} 个订阅，更新了 {total_updated} 集评分"
-        # 日志输出结果
-        logger.info(f"[自动评分] {summary}")
-        for r in results:
-            logger.info(f"[自动评分] {r}")
-        return {
-            "success": True,
-            "message": summary + "\n" + "\n".join(results),
-            "results": results
-        }
-
-    def api_batch_re_score(self) -> dict:
-        """API: 整理记录评分 - 调用内部 _batch_re_score()"""
-        return self._batch_re_score()
-
     def sync_subscribes(self):
         with lock:
             tz = pytz.timezone(settings.TZ)
@@ -2086,20 +1672,16 @@ class P115StrgmSub(_PluginBase):
             success = False
             try:
                 success = self._do_sync()
+                # 洗版扫描：同步完成后执行
+                if success and self._sync_handler:
+                    if self._enable_cloud_upgrade:
+                        self._sync_handler.auto_upgrade_scan(source='cloud')
+                    if self._enable_pt_upgrade:
+                        self._sync_handler.auto_upgrade_scan(source='pt')
             except Exception as e:
                 logger.error(f"同步任务异常：{e}")
                 success = False
             finally:
-                if self._sync_handler:
-                    # 兜底清理：每日一次扫描清理旧strm（无通知，纯清理）
-                    if self._enable_cloud_upgrade:
-                        import time
-                        now = time.time()
-                        if now - getattr(self, '_last_cloud_cleanup', 0) > 86400:
-                            self._last_cloud_cleanup = now
-                            self._sync_handler.auto_upgrade_scan(source='cloud')
-                    # 处理到期延迟删除
-                    self._sync_handler.process_expired_deletions()
                 # 同步完成后检查接管时段
                 self._apply_block_by_time()
 
@@ -2140,4 +1722,3 @@ class P115StrgmSub(_PluginBase):
             text="远程触发的追更任务已完成。",
             userid=event_data.get("user")
         )
-

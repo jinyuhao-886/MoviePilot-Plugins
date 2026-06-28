@@ -4,7 +4,7 @@
 """
 import re
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple, Dict
 from app.core.metainfo import MetaInfo
 from app.schemas import MediaInfo
 from app.log import logger
@@ -15,7 +15,8 @@ class SubscribeFilter:
 
     def __init__(self, quality: str = None, resolution: str = None, effect: str = None,
                  include: str = None, exclude: str = None, filter: str = None,
-                 strict: bool = True):
+                 filter_group_rules: List[Dict] = None, strict: bool = True,
+                 framerate: str = None, bit_depth: str = None, vivid_pattern: str = None):
         """
         初始化过滤条件
 
@@ -25,7 +26,11 @@ class SubscribeFilter:
         :param include: 包含正则（匹配则放行）
         :param exclude: 排除正则（硬拒绝型，命中即拒绝）
         :param filter: 过滤正则（硬拒绝型，命中即拒绝）
+        :param filter_group_rules: MP订阅过滤规则组列表，用于层级评分
         :param strict: 是否严格匹配，False 时不符合条件的资源也会被接受但分数较低
+        :param framerate: 帧率正则，如 r"60fps|120fps"，匹配加 100 分
+        :param bit_depth: 比特深度正则，如 r"10bit|12bit"，匹配加 100 分
+        :param vivid_pattern: HDR Vivid 加分正则，匹配则在 effect 基础上额外 +50
         """
         self.quality = quality
         self.resolution = resolution
@@ -33,14 +38,20 @@ class SubscribeFilter:
         self.include = include
         self.exclude = exclude
         self.filter = filter
+        self.filter_group_rules = filter_group_rules
         self.strict = strict
+        self.framerate = framerate
+        self.bit_depth = bit_depth
+        self.vivid_pattern = vivid_pattern
 
     def has_filters(self) -> bool:
         """
         是否有任何过滤条件
         """
         return bool(self.quality or self.resolution or self.effect
-                    or self.include or self.exclude or self.filter)
+                    or self.include or self.exclude or self.filter
+                    or self.filter_group_rules
+                    or self.framerate or self.bit_depth or self.vivid_pattern)
 
     def _is_rejected(self, file_name: str) -> Tuple[bool, str]:
         """拒绝型过滤：exclude/filter 命中即拒绝，永远不放行"""
@@ -48,6 +59,8 @@ class SubscribeFilter:
             return True, f"命中 exclude: {self.exclude}"
         if self.filter and re.search(self.filter, file_name, re.IGNORECASE):
             return True, f"命中 filter: {self.filter}"
+        return False, ""
+
     def match(self, file_name: str) -> Tuple[bool, int]:
         """
         检查文件名是否符合过滤条件
@@ -94,17 +107,47 @@ class SubscribeFilter:
                 if self.strict:
                     return False, 0
 
-        # 检查特效
+        # 检查特效（effect）
+        effect_matched = False
         if self.effect:
             total_rules += 1
             if re.search(self.effect, file_name, re.IGNORECASE):
                 score += 100  # 特效匹配加 100 分
                 matched_count += 1
+                effect_matched = True
                 logger.info(f"文件 {file_name} 匹配特效规则: {self.effect}")
             else:
                 logger.info(f"文件 {file_name} 不匹配特效规则: {self.effect}")
                 if self.strict:
                     return False, 0
+
+        # HDR Vivid 加分：effect 已匹配且命中 vivid_pattern → 额外 +50
+        vivid_bonus_applied = False
+        if effect_matched and self.vivid_pattern:
+            if re.search(self.vivid_pattern, file_name, re.IGNORECASE):
+                score += 50
+                vivid_bonus_applied = True
+                logger.info(f"文件 {file_name} 匹配 HDR Vivid 规则: {self.vivid_pattern} → +50")
+
+        # 检查帧率
+        if self.framerate:
+            total_rules += 1
+            if re.search(self.framerate, file_name, re.IGNORECASE):
+                score += 100  # 帧率匹配加 100 分
+                matched_count += 1
+                logger.info(f"文件 {file_name} 匹配帧率规则: {self.framerate}")
+            else:
+                logger.info(f"文件 {file_name} 不匹配帧率规则: {self.framerate}")
+
+        # 检查比特深度
+        if self.bit_depth:
+            total_rules += 1
+            if re.search(self.bit_depth, file_name, re.IGNORECASE):
+                score += 100  # 比特深度匹配加 100 分
+                matched_count += 1
+                logger.info(f"文件 {file_name} 匹配比特深度规则: {self.bit_depth}")
+            else:
+                logger.info(f"文件 {file_name} 不匹配比特深度规则: {self.bit_depth}")
 
         # 非严格模式下，即使不完全匹配也返回 True，但分数较低
         # 完全匹配的资源分数更高，便于后续替换
@@ -123,6 +166,10 @@ class SubscribeFilter:
         if self.resolution and not re.search(self.resolution, file_name, re.IGNORECASE):
             return False
         if self.effect and not re.search(self.effect, file_name, re.IGNORECASE):
+            return False
+        if self.framerate and not re.search(self.framerate, file_name, re.IGNORECASE):
+            return False
+        if self.bit_depth and not re.search(self.bit_depth, file_name, re.IGNORECASE):
             return False
         return True
 
