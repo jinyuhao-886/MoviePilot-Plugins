@@ -157,6 +157,8 @@ class P115StrgmSub(_PluginBase):
     _unblock_end_time: str = "17:30"
     # 当前是否处于接管态（True=强制仅115，False=用户原始站点）
     _is_blocked: bool = False
+    # 全局配置是否已应用（安装成功首次执行时才修改MP系统配置）
+    _global_config_applied: bool = False
 
     # 运行时对象
     _pansou_client: Optional[PanSouClient] = None
@@ -847,9 +849,9 @@ class P115StrgmSub(_PluginBase):
                     f"E{ep_num}: 候选{cand_score}分 > 现有{existing_score}分 → 放行"
                 )
                 # PT洗版通知：放行时告知用户正在升级
-                if self._notify and self._post_message:
+                if self._notify:
                     season_str = season_list[0] if season_list else 1
-                    self._post_message(
+                    self.post_message(
                         mtype=NotificationType.Plugin,
                         title="【PT洗版】下载升级",
                         text=(
@@ -994,29 +996,10 @@ class P115StrgmSub(_PluginBase):
 
             self._block_system_subscribe = bool(config.get("block_system_subscribe", False))
 
-        # 注册自定义过滤规则（VIVID/10BIT/60FPS扩展）
-        self._register_filter_rules()
-        # 应用命名规则模板
-        self._apply_naming_rules()
-
         # 初始化客户端/handlers
         self._init_clients()
         self._init_handlers()
 
-        # 配置立即生效：根据当前时间检查接管态
-        self._apply_block_by_time()
-        self._apply_best_version_all()
-        self._apply_best_version_selected()
-        # 保存配置时自动触发评分：已选独立洗版订阅且ids有变化时自动批量评分
-        if self._upgrade_subscribe_ids:
-            current_hash = str(sorted(str(i) for i in self._upgrade_subscribe_ids))
-            if current_hash != self._last_scored_ids_hash:
-                logger.info(f"检测到独立洗版订阅列表有变化，自动触发整理记录评分")
-                try:
-                    self._batch_re_score()
-                except Exception as e:
-                    logger.error(f"自动评分出错: {e}")
-                self._last_scored_ids_hash = current_hash
         logger.info(f"插件初始化：屏蔽态={self._block_start_time}~{self._block_end_time}, 开放态={self._unblock_start_time}~{self._unblock_end_time}, 洗版={'开启' if self._auto_best_version else '关闭'}, 当前接管态={self._is_blocked}")
 
         # 立即运行一次
@@ -2090,7 +2073,33 @@ class P115StrgmSub(_PluginBase):
         """API: 整理记录评分 - 调用内部 _batch_re_score()"""
         return self._batch_re_score()
 
+    def _apply_global_config_once(self):
+        """安装确认后首次执行时，应用一次系统级配置。
+        放在 sync_subscribes() 开头调用，确保插件加载成功（PIP 依赖已安装）后才修改 MP 系统配置。
+        """
+        if self._global_config_applied:
+            return
+        try:
+            self._register_filter_rules()
+            self._apply_naming_rules()
+            self._apply_block_by_time()
+            self._apply_best_version_all()
+            self._apply_best_version_selected()
+            # 批量评分（已选独立洗版订阅且ids有变化时自动触发）
+            if self._upgrade_subscribe_ids:
+                current_hash = str(sorted(str(i) for i in self._upgrade_subscribe_ids))
+                if current_hash != self._last_scored_ids_hash:
+                    logger.info("检测到独立洗版订阅列表有变化，自动触发整理记录评分")
+                    self._batch_re_score()
+                    self._last_scored_ids_hash = current_hash
+            self._global_config_applied = True
+            logger.info("✓ 插件全局配置已应用（过滤规则 / 命名模板 / 接管态 / 洗版）")
+        except Exception as e:
+            logger.error(f"插件全局配置应用失败（下次首次执行重试）: {e}")
+
     def sync_subscribes(self):
+        # 首次成功运行时才应用系统级配置（避免安装失败却污染MP配置）
+        self._apply_global_config_once()
         with lock:
             tz = pytz.timezone(settings.TZ)
             run_start = datetime.datetime.now(tz=tz)
