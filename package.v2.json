@@ -4,7 +4,7 @@
     "release": true,
     "description": "jyh 定制的 115 网盘订阅追更魔改版,基于 mrtian2016 深度改造。内置事件驱动洗版通知、屏蔽时段调度、评分拦截系统、MP 规则组管理。",
     "labels": "订阅,115网盘,洗版,PT洗版,魔改",
-    "version": "1.6.7",
+    "version": "1.6.8",
     "icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png",
     "author": "jinyuhao-886",
     "level": 1,

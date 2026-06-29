@@ -947,3 +947,20 @@ class P115ClientManager:
     def reset_api_call_count(self):
         """重置 API 调用计数器"""
         self._api_call_count = 0
+
+    def find_file_in_dir(self, dir_path: str, filename: str) -> Optional[dict]:
+        """在指定115目录下查找文件名匹配的文件
+
+        :param dir_path: 115目录路径
+        :param filename: 要查找的文件名（不含ext）
+        :return: 匹配的文件信息dict，未找到返回None
+        """
+        files = self.list_files(dir_path)
+        MEDIA_EXTS = {'.mkv', '.mp4', '.ts', '.avi', '.mov', '.wmv', '.flv', '.webm', '.iso', '.m2ts'}
+        for f in files:
+            fname = f.get("name", "")
+            name_no_ext = fname.rsplit('.', 1)[0] if '.' in fname else fname
+            ext = f".{fname.rsplit('.', 1)[-1].lower()}" if '.' in fname else ""
+            if name_no_ext == filename and ext in MEDIA_EXTS:
+                return f
+        return None
