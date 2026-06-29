@@ -4,7 +4,7 @@
     "release": true,
     "description": "jyh 定制的 115 网盘订阅追更魔改版,基于 mrtian2016 深度改造。内置事件驱动洗版通知、屏蔽时段调度、评分拦截系统、MP 规则组管理。",
     "labels": "订阅,115网盘,洗版,PT洗版,魔改",
-    "version": "1.6.91",
+    "version": "1.6.92",
     "icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png",
     "author": "jinyuhao-886",
     "level": 1,
@@ -17,7 +17,8 @@
       "v1.5.3-modi.4": "1. 完整网盘+PT双模式洗版；2. MP规则组管理、重命名模板注入；3. 屏蔽时段调度",
       "v1.5.3-modi.2": "1. 删8小时调度锁；2. 默认cron 0 18-23 * * *；3. DoVi兜底硬拒绝",
       "v1.6.7": "1. 修复 episode_priority 脏数据根因：云升级路径写入 dict 而非纯 int，导致 MP 订阅 API 500；2. 进度自愈每次同步独立执行，不再受每日一次限制；3. 修复 PT 洗版首次下载误报「0→97分」升级通知；4. 所有 episode_priority 写入路径加装纯 int 防护",
-      "v1.6.91": "1. 新增「强制重评分」API+UI按钮：清空旧episode_priority，重新扫描磁盘strm文件打分并覆盖，同时清理无效脏数据；2. UI新增评分工具按钮组（整理记录评分+强制重评分）"
+      "v1.6.91": "1. 新增「强制重评分」API+UI按钮：清空旧episode_priority，重新扫描磁盘strm文件打分并覆盖，同时清理无效脏数据；2. UI新增评分工具按钮组（整理记录评分+强制重评分）",
+      "v1.6.92": "修复强制重评分使用strm文件大小（~200字节）而非115实际文件大小，导致体积评分全为20分的bug"
     }
   }
 }

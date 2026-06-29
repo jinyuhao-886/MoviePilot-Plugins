@@ -37,13 +37,13 @@ class P115StrgmSub(_PluginBase):
     """115网盘订阅追更插件"""
 
     # 插件名称
-    plugin_name = "115网盘订阅追更魔改版v1.6.91"
+    plugin_name = "115网盘订阅追更魔改版v1.6.92"
     # 插件描述
     plugin_desc = "结合MoviePilot订阅功能，自动搜索115网盘资源并转存缺失的电影和剧集。"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.91"
+    plugin_version = "1.6.92"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
