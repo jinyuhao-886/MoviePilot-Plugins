@@ -728,10 +728,6 @@ class UIConfig:
                 ]
             }
         ]
-
-            }
-        ]
-
         # ---- 评分工具按钮 ----
         form_schema.append({
             'component': 'VCard',
@@ -777,7 +773,7 @@ class UIConfig:
                 'props': {'class': 'mt-2'},
                 'content': [{
                     'component': 'VCol',
-                    'props': {'cols': 12'},
+                    'props': {'cols': 12},
                     'content': [{
                         'component': 'VAlert',
                         'props': {'type': 'info', 'variant': 'tonal',
