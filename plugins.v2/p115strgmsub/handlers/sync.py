@@ -56,7 +56,6 @@ class SyncHandler:
         frame_rate_pattern: str = r"60fps|120fps",
         bit_rate_pattern: str = r"TrueHD|DTS-HD|DTS5\.1|ATMOS|LPCM|FLAC",
         vivid_pattern: str = r"HDR[._ ]?[Vv]ivid|菁彩影像|HDRVivid",
-        upgrade_mode: str = "smart",
         upgrade_threshold: int = 25
     ):
         """
@@ -113,7 +112,6 @@ class SyncHandler:
         self._frame_rate_pattern = frame_rate_pattern or r"60fps|120fps"
         self._bit_depth_pattern = bit_rate_pattern or r"10bit|12bit|10-bit"
         self._vivid_pattern = vivid_pattern or r"HDR[._ ]?[Vv]ivid|菁彩影像|HDRVivid"
-        self._upgrade_mode = upgrade_mode
         self._upgrade_threshold = upgrade_threshold
 
         # 延迟删除队列配置
@@ -923,22 +921,18 @@ class SyncHandler:
         rule_score: int,
         existing_size: int,
         candidate_size: int,
-        mode: str = "smart"
     ) -> int:
         """
         计算综合洗版评分 (0~100)
         :param rule_score: MP 规则组评分 (93-100)，来自 _get_mp_rule_score()
         :param existing_size: 现有文件大小（字节）
         :param candidate_size: 候选文件大小（字节）
-        :param mode: 'simple'=纯体积, 'smart'=体积×0.75+画质×0.25
+        权重：体积 50% + 画质 50%
         """
         size_score = SyncHandler._calc_size_score(existing_size, candidate_size)
-        if mode == "simple":
-            return max(size_score, 0)
-        else:
-            normalized_rule = min(rule_score, 100)  # 已在 93-100 范围
-            total = size_score * 0.75 + normalized_rule * 0.25
-            return max(int(total), 0)
+        normalized_rule = min(rule_score, 100)  # 已在 93-100 范围
+        total = size_score * 0.50 + normalized_rule * 0.50
+        return max(int(total), 0)
 
     @staticmethod
     def _get_mp_rule_score(filename: str, filesize: int, subscribe, season: int) -> int:
@@ -1138,7 +1132,6 @@ class SyncHandler:
                         rule_score=pri_order,
                         existing_size=ep_size or 1,
                         candidate_size=ep_size or 1,
-                        mode=self._upgrade_mode
                     )
 
                     if episode not in local_scores or total_score > local_scores[episode]:
@@ -1309,7 +1302,6 @@ class SyncHandler:
                             rule_score=cand_pri,
                             existing_size=existing_size or candidate_size,
                             candidate_size=candidate_size or existing_size,
-                            mode=self._upgrade_mode
                         )
 
                         score_gap = new_score - old_score
@@ -1712,12 +1704,11 @@ class SyncHandler:
             # MP 规则组评分 + 体积评分 = 综合分
             ep_size = self._get_existing_ep_size(subscribe, episode, local_dir)
             pri_order = self._get_mp_rule_score(fname, ep_size, subscribe, season)
-            # 综合分：体积×0.75 + 画质×0.25
+            # 综合分：体积×0.50 + 画质×0.50
             total_score = self._calc_total_upgrade_score(
                 rule_score=pri_order,
                 existing_size=ep_size or 1,
                 candidate_size=ep_size or 1,
-                mode=self._upgrade_mode
             )
 
             ep_key = str(episode)

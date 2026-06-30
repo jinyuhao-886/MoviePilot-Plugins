@@ -86,7 +86,7 @@ class UIConfig:
             return []
 
     @staticmethod
-    def get_form() -> Tuple[List[dict], Dict[str, Any]]:
+    def get_form(available_rule_groups: list = None) -> Tuple[List[dict], Dict[str, Any]]:
         """
         获取插件配置表单
         :return: (表单schema, 默认配置)
@@ -389,68 +389,40 @@ class UIConfig:
                         'content': [{
                             'component': 'VCol',
                             'props': {'cols': 12},
-                            'content': [{'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text': '规则自动填充（内置 SubscribeGroup）：新增订阅时自动填充过滤规则组。可按二级分类选择规则组，无匹配时用通用规则组兜底。'}}]
+                            'content': [{'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text': '规则自动填充（内置 SubscribeGroup）：新增订阅时自动填充过滤规则组和正则过滤。按二级分类自由配置，一行一条。格式：分类名,规则组名,包含正则,排除正则（逗号分隔）。分类名自由输入，规则组名手动填入（参考下方可用列表）。留空字段也要写逗号占位，正则内的 OR 用单竖线 |。'}}]
                         }]
                     },
                     {
                         'component': 'VRow',
                         'content': [
                             {'component': 'VCol', 'props': {'cols': 12, 'md': 2},
-                             'content': [{'component': 'VSwitch', 'props': {'model': 'subscribe_auto_fill', 'label': '启用', 'hint': '新增订阅时自动填充过滤规则组'}}]},
-                            {'component': 'VCol', 'props': {'cols': 12, 'md': 5},
-                             'content': [{'component': 'VSelect', 'props': {
+                             'content': [{'component': 'VSwitch', 'props': {'model': 'subscribe_auto_fill', 'label': '启用', 'hint': '新增订阅时自动填充过滤规则组+正则'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 10},
+                             'content': [{'component': 'VTextarea', 'props': {
                                  'model': 'subscribe_category_rules',
-                                 'label': '二级分类规则映射（多选，按序匹配）',
-                                 'items': [
-                                     {'title': '国产剧 → 电视剧非杜比画质优先', 'value': '国产剧#电视剧非杜比画质优先'},
-                                     {'title': '国产剧 → 电视剧杜比画质优先', 'value': '国产剧#电视剧杜比画质优先'},
-                                     {'title': '美剧 → 电视剧非杜比画质优先', 'value': '美剧#电视剧非杜比画质优先'},
-                                     {'title': '美剧 → 电视剧杜比画质优先', 'value': '美剧#电视剧杜比画质优先'},
-                                     {'title': '动漫 → 电视剧非杜比画质优先', 'value': '动漫#电视剧非杜比画质优先'},
-                                     {'title': '动漫 → 电视剧杜比画质优先', 'value': '动漫#电视剧杜比画质优先'},
-                                     {'title': '华语电影 → 电影非杜比画质优先', 'value': '华语电影#电影非杜比画质优先'},
-                                     {'title': '华语电影 → 电影含杜比画质优先', 'value': '华语电影#电影含杜比画质优先'},
-                                     {'title': '外语电影 → 电影非杜比画质优先', 'value': '外语电影#电影非杜比画质优先'},
-                                     {'title': '外语电影 → 电影含杜比画质优先', 'value': '外语电影#电影含杜比画质优先'},
-                                 ],
-                                 'multiple': True,
-                                 'chips': True,
+                                 'label': '二级分类规则映射（一行一条）',
+                                 'placeholder': '国产剧,电视剧非杜比画质优先,,\n综艺,综艺正片非杜比画质优先,正片,花絮|预告|幕后',
+                                 'hint': '每行格式：分类名,规则组名,包含正则,排除正则（用英文逗号 , 分隔）。逗号用于分隔字段，正则内的 OR 用单竖线 |。留空字段也要写逗号占位。',
+                                 'persistent-hint': True,
                                  'clearable': True,
-                                 'closable-chips': True,
-                                 'hint': '选中的映射项会应用于对应二级分类的订阅。同分类同名多项时，按选中先后顺序匹配。未匹配的分类走下方兜底规则组。',
-                                 'persistent-hint': True
-                             }}]},
+                                 'rows': 6,
+                                 'auto-grow': True
+                             }}]}
                         ]
                     },
-                    # 通用规则组兜底
+                    # 动态显示可用规则组
                     {
                         'component': 'VRow',
-                        'content': [
-                            {'component': 'VCol', 'props': {'cols': 12, 'md': 4},
-                             'content': [{'component': 'VSelect', 'props': {
-                                 'model': 'subscribe_tv_rule_group',
-                                 'label': '电视剧兜底规则组',
-                                 'items': [
-                                     {'title': '电视剧非杜比画质优先', 'value': '电视剧非杜比画质优先'},
-                                     {'title': '电视剧杜比画质优先', 'value': '电视剧杜比画质优先'},
-                                 ],
-                                 'clearable': True,
-                                 'hint': '未匹配到二级分类规则时，电视剧的兜底规则组',
-                                 'persistent-hint': True
-                             }}]},
-                            {'component': 'VCol', 'props': {'cols': 12, 'md': 4},
-                             'content': [{'component': 'VSelect', 'props': {
-                                 'model': 'subscribe_movie_rule_group',
-                                 'label': '电影兜底规则组',
-                                 'items': [
-                                     {'title': '电影非杜比画质优先', 'value': '电影非杜比画质优先'},
-                                     {'title': '电影含杜比画质优先', 'value': '电影含杜比画质优先'},
-                                 ],
-                                 'clearable': True,
-                                 'hint': '未匹配到二级分类规则时，电影的兜底规则组',
-                                 'persistent-hint': True
-                             }}]},
-                        ]
+                        'content': [{
+                            'component': 'VCol',
+                            'props': {'cols': 12},
+                            'content': [{'component': 'VAlert', 'props': {
+                                'type': 'info',
+                                'variant': 'tonal',
+                                'text': f'📋 当前MP中可用的规则组（填规则组名时参考）：{chr(10).join(available_rule_groups) if available_rule_groups else "（暂无，请先在MP规则设置中创建自定义规则组）"}',
+                                'dismissible': True
+                            }}]
+                        }]
                     },
                     # 洗版模块（可折叠）
                     {
@@ -553,25 +525,15 @@ class UIConfig:
                                     {
                                         'component': 'VRow',
                                         'content': [
-                                            {'component': 'VCol', 'props': {'cols': 12, 'md': 4},
-                                             'content': [{'component': 'VSelect', 'props': {
-                                                 'model': 'upgrade_mode', 'label': '洗版评分模式',
-                                                 'items': [
-                                                     {'title': '智能洗版（体积75%+规则25% · 推荐）', 'value': 'smart'},
-                                                     {'title': '简易洗版（纯体积对比）', 'value': 'simple'},
-                                                 ],
-                                                 'hint': '智能：体积占75%权重，规则占25%（HDR/H265/10bit等）。简易：只看文件大小，体积越大分越高。',
-                                                 'persistent-hint': True, 'clearable': True
-                                             }}]},
-                                            {'component': 'VCol', 'props': {'cols': 12, 'md': 4},
+                                            {'component': 'VCol', 'props': {'cols': 12, 'md': 6},
                                              'content': [{'component': 'VSlider', 'props': {
                                                  'model': 'upgrade_threshold', 'label': '最低洗版提升分',
                                                  'min': 0, 'max': 100, 'step': 5,
                                                  'thumb-label': True,
-                                                 'hint': '候选文件总分必须超过现有文件至少N分才触发洗版。25≈体积大15%或规则提升1级。越大越保守。',
+                                                 'hint': '候选文件总分必须超过现有文件至少N分才触发洗版（50/50评分制）。25≈体积大15%或画质提升1级。越大越保守。',
                                                  'persistent-hint': True
                                              }}]},
-                                            {'component': 'VCol', 'props': {'cols': 12, 'md': 4},
+                                            {'component': 'VCol', 'props': {'cols': 12, 'md': 6},
                                              'content': [{'component': 'VTextField', 'props': {
                                                  'model': 'self_heal_interval', 'label': '进度自愈间隔（分钟）', 'type': 'number',
                                                  'placeholder': '10', 'hint': '自动清理episode_priority中本地strm已不存在的记录。设为0关闭自愈。',
@@ -623,7 +585,7 @@ class UIConfig:
                                                 'props': {
                                                     'model': 'auto_register_rules',
                                                     'label': '注册自定义规则+预设规则组到MP',
-                                                    'hint': '开启后，插件向MP注册VIVID/10BIT/60FPS自定义规则，并自动应用所选优先级规则组预设。关闭则不动MP原有规则。默认关闭，按需开启。',
+                                                    'hint': '开启后，插件向MP注册VIVID/10BIT/60FPS三条自定义规则，并自动应用所选优先级规则组预设。关闭则不动MP原有规则。默认关闭，按需开启。',
                                                     'persistent-hint': True
                                                 }
                                             }]
@@ -843,7 +805,6 @@ class UIConfig:
             "cloud_movie_local_dir": "",
             "cloud_movie_remote_dir": "",
             "min_upgrade_tiers": 2,
-            "upgrade_mode": "smart",
             "upgrade_threshold": 25,
             "self_heal_interval": 10,
             "frame_rate_pattern": r"60fps|120fps|50fps|60帧|120帧|50帧",
@@ -857,6 +818,8 @@ class UIConfig:
             "tv_rename_format": "{{title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/Season {{'%02d'|format(season|int)}}/{{title}}{% if year %} ({{year}}){% endif %} - {{season_episode}} - {% if episode_title %}{{episode_title}}{% else %}第 {{episode}} 集{% endif %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if hdr %}.{{hdr}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{% if releaseGroup %} - {{releaseGroup}}{% endif %}{{fileExt}}",
             "movie_rename_format": "{{title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/{{title}}{% if year %} ({{year}}){% endif %}{% if videoFormat %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% endif %}{% if releaseGroup %} - {{releaseGroup}}{% endif %}{{fileExt}}",
             "auto_apply_naming": False,
+            "subscribe_auto_fill": False,
+            "subscribe_category_rules": "国产剧,电视剧非杜比画质优先,,\n欧美剧,电视剧非杜比画质优先,,\n日韩剧,电视剧非杜比画质优先,,\n国漫,电视剧非杜比画质优先,,\n日番,电视剧杜比画质优先,,\n纪录片,电视剧非杜比画质优先,,\n儿童,电视剧非杜比画质优先,,\n动画电影,电影杜比画质优先,,\n华语电影,电影非杜比画质优先,,\n外语电影,电影杜比画质优先,,\n未分类_TV,电视剧非杜比画质优先,,\n未分类_Movie,电影非杜比画质优先,,",
         }
 
         return form_schema, default_config
