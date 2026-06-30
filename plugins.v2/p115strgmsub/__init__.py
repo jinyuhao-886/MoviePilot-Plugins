@@ -37,13 +37,13 @@ class P115StrgmSub(_PluginBase):
     """115网盘订阅追更插件"""
 
     # 插件名称
-    plugin_name = "115网盘订阅追更魔改版v1.6.93"
+    plugin_name = "115网盘订阅追更魔改版v1.6.94"
     # 插件描述
     plugin_desc = "结合MoviePilot订阅功能，自动搜索115网盘资源并转存缺失的电影和剧集。"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.93"
+    plugin_version = "1.6.94"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
@@ -1105,29 +1105,37 @@ class P115StrgmSub(_PluginBase):
     def _parse_category_rules(self) -> dict:
         """
         解析二级分类规则映射（新文本域格式）。
+        从数据库直读插件配置，不依赖内存缓存，确保规则始终最新。
         输入（多行文本，用 , 逗号分隔字段）：
             国产剧,电视剧非杜比画质优先,,
-            综艺,综艺正片非杜比画质优先,正片,花絮|预告|幕后
+            综艺,电视剧非杜比画质优先,,直拍|加更|先导|...
         字段顺序：category, filter_group, include, exclude
         输出：
             {
                 '国产剧': {'filter_group': '电视剧非杜比画质优先', 'include': '', 'exclude': ''},
-                '综艺': {'filter_group': '综艺正片非杜比画质优先', 'include': '正片', 'exclude': '花絮|预告|幕后'},
+                '综艺': {'filter_group': '电视剧非杜比画质优先', 'include': '', 'exclude': '直拍|加更|...'},
             }
         """
-        result = {}
-        raw = self._subscribe_category_rules or ""
-        if isinstance(raw, list):
-            # 兼容旧版 VSelect list 格式
-            for item in raw:
-                if not item or '#' not in item:
-                    continue
-                parts = item.split('#', 1)
-                category = parts[0].strip()
-                rule_group = parts[1].strip()
-                if category and rule_group:
-                    result[category] = {'filter_group': rule_group, 'include': '', 'exclude': ''}
-            return result
+        # 从数据库直读插件配置
+        try:
+            from app.db import SessionFactory
+            from sqlalchemy import text
+            with SessionFactory() as db:
+                row = db.execute(
+                    text("SELECT value FROM systemconfig WHERE key='plugin.P115StrgmSub'")
+                ).fetchone()
+                if row:
+                    import json
+                    val = json.loads(row[0])
+                    raw = val.get('subscribe_category_rules', '')
+                    if isinstance(raw, list):
+                        raw = '\n'.join(raw) if raw else ''
+                    else:
+                        raw = str(raw or '')
+                else:
+                    raw = self._subscribe_category_rules or ''
+        except Exception:
+            raw = self._subscribe_category_rules or ''
         for line in raw.split('\n'):
             line = line.strip()
             if not line or line.startswith('#'):
