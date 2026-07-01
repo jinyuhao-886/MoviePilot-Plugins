@@ -43,7 +43,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.97"
+    plugin_version = "1.6.98"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
@@ -859,29 +859,36 @@ class P115StrgmSub(_PluginBase):
         if not all_subs:
             return
 
-        # ── 仅115拦截：在所有匹配订阅中检查（不限 best_version） ──
+        # ── 仅115拦截：仅当该剧所有订阅都是 sites=[-1] 时才拦截 ──
+        all_only_115 = True
         for s in all_subs:
             if s.type != MediaType.TV.value:
                 continue
             sub_sites = getattr(s, 'sites', None) or []
-            if sub_sites == [-1]:
-                event_data.cancel = True
-                event_data.source = "P115StrgmSub-仅115拦截"
-                event_data.reason = f"订阅{s.name}仅限115网盘，拦截PT下载: {torrent.title}"
-                logger.info(
-                    f"[仅115拦截] ✅ 已拦截 {s.name} "
-                    f"({torrent.title}): sites=[-1]，拦截PT下载"
-                )
-                if self._notify:
-                    self.post_message(
-                        mtype=NotificationType.Plugin,
-                        title="【仅115拦截】阻止PT下载",
-                        text=(
-                            f"{s.name} 的站点设置为仅115网盘，\n"
-                            f"已拦截来自PT的下载：{torrent.title}"
-                        )
+            if sub_sites != [-1]:
+                all_only_115 = False
+                break
+
+        if all_only_115:
+            # 取第一个订阅的名字做展示
+            sub_name = all_subs[0].name if all_subs else "未知"
+            event_data.cancel = True
+            event_data.source = "P115StrgmSub-仅115拦截"
+            event_data.reason = f"订阅{sub_name}仅限115网盘，拦截PT下载: {torrent.title}"
+            logger.info(
+                f"[仅115拦截] ✅ 已拦截 {sub_name} "
+                f"({torrent.title}): 所有订阅都是sites=[-1]，拦截PT下载"
+            )
+            if self._notify:
+                self.post_message(
+                    mtype=NotificationType.Plugin,
+                    title="【仅115拦截】阻止PT下载",
+                    text=(
+                        f"{sub_name} 的所有订阅都设置为仅115网盘，\n"
+                        f"已拦截来自PT的下载：{torrent.title}"
                     )
-                return
+                )
+            return
 
         # ── 找 best_version=True 的订阅做评分拦截 ──
         subscribe = None
