@@ -408,7 +408,7 @@ class P115StrgmSub(_PluginBase):
                 import datetime as _dt
                 import pytz as _tz
                 _now = _dt.datetime.now(_tz.timezone(settings.TZ)).strftime("%H:%M")
-                self._post_message(
+                self.post_message(
                     mtype=NotificationType.Plugin,
                     title="✅ 已退出115网盘接管",
                     text=f"所有订阅已恢复为默认站点（无限制）\n"
@@ -445,7 +445,7 @@ class P115StrgmSub(_PluginBase):
                 import datetime as _dt
                 import pytz as _tz
                 _now = _dt.datetime.now(_tz.timezone(settings.TZ)).strftime("%H:%M")
-                self._post_message(
+                self.post_message(
                     mtype=NotificationType.Plugin,
                     title="✅ 已退出115网盘接管（备份修复）",
                     text=f"订阅原始备份已被污染（全为[-1]）\n"
