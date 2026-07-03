@@ -3,6 +3,7 @@
 结合MoviePilot订阅功能，自动搜索115网盘资源并转存缺失剧集
 """
 import datetime
+import time
 from pathlib import Path
 from threading import Lock
 from typing import Optional, Any, List, Dict, Tuple
@@ -43,7 +44,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.97"
+    plugin_version = "1.6.98"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
@@ -56,6 +57,9 @@ class P115StrgmSub(_PluginBase):
     # 私有变量
     _scheduler: Optional[BackgroundScheduler] = None
     _toggle_scheduler: Optional[BackgroundScheduler] = None  # 用于延迟切换/窗口切换
+
+    # 重复通知缓存：{种子标题: 时间戳}，6小时内同种子不重复通知
+    _notified_titles: Dict[str, float] = {}
 
     # 配置属性
     _enabled: bool = False
@@ -476,6 +480,14 @@ class P115StrgmSub(_PluginBase):
         self.__update_config()
         logger.info(f"已退出接管：恢复 {restored} 个订阅的原始站点（{reason or '时间到达接管结束'}）")
 
+        # 恢复站点后触发一次 PT 订阅搜索（非屏蔽态下让 MP 主动搜 PT）
+        try:
+            from app.chain.subscribe import SubscribeChain
+            SubscribeChain().search(state="R", manual=True)
+            logger.info("开放态：已触发 PT 订阅搜索（SubscribeChain.search）")
+        except Exception as e:
+            logger.warning(f"开放态触发 PT 搜索失败：{e}")
+
     def _is_time_in_block(self, time_str: str = None) -> bool:
         """
         判断指定时间（或当前时间）是否在屏蔽时间段内。
@@ -859,29 +871,36 @@ class P115StrgmSub(_PluginBase):
         if not all_subs:
             return
 
-        # ── 仅115拦截：在所有匹配订阅中检查（不限 best_version） ──
+        # ── 仅115拦截：仅当该剧所有订阅都是 sites=[-1] 时才拦截 ──
+        all_only_115 = True
         for s in all_subs:
             if s.type != MediaType.TV.value:
                 continue
             sub_sites = getattr(s, 'sites', None) or []
-            if sub_sites == [-1]:
-                event_data.cancel = True
-                event_data.source = "P115StrgmSub-仅115拦截"
-                event_data.reason = f"订阅{s.name}仅限115网盘，拦截PT下载: {torrent.title}"
-                logger.info(
-                    f"[仅115拦截] ✅ 已拦截 {s.name} "
-                    f"({torrent.title}): sites=[-1]，拦截PT下载"
-                )
-                if self._notify:
-                    self.post_message(
-                        mtype=NotificationType.Plugin,
-                        title="【仅115拦截】阻止PT下载",
-                        text=(
-                            f"{s.name} 的站点设置为仅115网盘，\n"
-                            f"已拦截来自PT的下载：{torrent.title}"
-                        )
+            if sub_sites != [-1]:
+                all_only_115 = False
+                break
+
+        if all_only_115:
+            # 取第一个订阅的名字做展示
+            sub_name = all_subs[0].name if all_subs else "未知"
+            event_data.cancel = True
+            event_data.source = "P115StrgmSub-仅115拦截"
+            event_data.reason = f"订阅{sub_name}仅限115网盘，拦截PT下载: {torrent.title}"
+            logger.info(
+                f"[仅115拦截] ✅ 已拦截 {sub_name} "
+                f"({torrent.title}): 所有订阅都是sites=[-1]，拦截PT下载"
+            )
+            if self._notify:
+                self.post_message(
+                    mtype=NotificationType.Plugin,
+                    title="【仅115拦截】阻止PT下载",
+                    text=(
+                        f"{sub_name} 的所有订阅都设置为仅115网盘，\n"
+                        f"已拦截来自PT的下载：{torrent.title}"
                     )
-                return
+                )
+            return
 
         # ── 找 best_version=True 的订阅做评分拦截 ──
         subscribe = None
@@ -987,6 +1006,17 @@ class P115StrgmSub(_PluginBase):
                         new_eps.append(ep_num)
 
                 if upgrade_eps or new_eps:
+                    # 短期重复通知缓存：6小时内同种子标题不重复通知
+                    now_ts = time.time()
+                    last_ts = self._notified_titles.get(torrent.title, 0)
+                    if now_ts - last_ts < 21600:
+                        logger.info(
+                            f"[下载前拦截] 跳过重复通知：{torrent.title} "
+                            f"({subscribe.name}) 已在6小时内通知过"
+                        )
+                        return
+                    self._notified_titles[torrent.title] = now_ts
+
                     parts = []
                     if new_eps:
                         parts.append(f"新集{len(new_eps)}集")

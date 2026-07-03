@@ -18,7 +18,7 @@ from app.db.subscribe_oper import SubscribeOper
 from app.db.downloadhistory_oper import DownloadHistoryOper
 from app.log import logger
 from app.schemas import MediaInfo
-from app.schemas.types import MediaType, NotificationType
+from app.schemas.types import MediaType, NotificationType, TorrentStatus
 from app.utils.string import StringUtils
 
 from ..utils import FileMatcher, SubscribeFilter
@@ -1885,6 +1885,16 @@ class SyncHandler:
             return
 
         cleaned_count = 0
+
+        # 获取下载器中正在下载的种子列表，用于判断strm未生成但正在下载的任务
+        downloading_torrents = []
+        try:
+            torrents = self._chain.list_torrents(status=TorrentStatus.DOWNLOADING)
+            if torrents:
+                downloading_torrents = [(t.name or "", t.title or "") for t in torrents]
+        except Exception as e:
+            logger.warning(f"自愈清理：获取下载中列表失败 {e}")
+
         for row in rows:
             try:
                 sid, raw_ep_pri, name, season, save_path, tmdbid, year = row
@@ -1940,6 +1950,15 @@ class SyncHandler:
                         if found:
                             break
                     if not found:
+                        # 检查是否在下载器中正在下载
+                        ep_pattern = f"S{season:02d}E{ep_num:02d}"
+                        is_downloading = any(
+                            ep_pattern in name_str or ep_pattern in title_str
+                            for name_str, title_str in downloading_torrents
+                        )
+                        if is_downloading:
+                            logger.info(f"自愈清理：{name} S{season:02d}E{ep_num:02d} 正在下载中，保留记录")
+                            continue
                         to_remove.append(ep_key)
 
                 if to_remove:
