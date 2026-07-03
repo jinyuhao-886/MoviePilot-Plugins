@@ -1950,7 +1950,7 @@ class SyncHandler:
                         if found:
                             break
                     if not found:
-                        # strm文件不存在，检查是否在下载器中正在下载
+                        # ① 检查是否在下载器中正在下载
                         ep_pattern = f"S{season:02d}E{ep_num:02d}"
                         is_downloading = any(
                             ep_pattern in name_str or ep_pattern in title_str
@@ -1959,6 +1959,23 @@ class SyncHandler:
                         if is_downloading:
                             logger.info(f"自愈清理：{name} S{season:02d}E{ep_num:02d} 正在下载中，保留记录")
                             continue
+
+                        # ② 检查下载目录中是否存在该集的媒体文件（正在做种/上传中，strm未生成）
+                        found_in_dl = False
+                        for dldir in ['/pt/qb', '/pt2/qb']:
+                            dl_path = Path(dldir)
+                            if dl_path.exists():
+                                for ext in ['.mkv', '.mp4', '.ts', '.iso']:
+                                    matches = list(dl_path.rglob(f"*{ep_pattern}*{ext}"))
+                                    if matches:
+                                        found_in_dl = True
+                                        break
+                            if found_in_dl:
+                                break
+                        if found_in_dl:
+                            logger.info(f"自愈清理：{name} {ep_pattern} 在下载目录中有媒体文件，保留记录")
+                            continue
+
                         to_remove.append(ep_key)
 
                 if to_remove:
