@@ -45,7 +45,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.99"
+    plugin_version = "1.6.98"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
@@ -1864,7 +1864,7 @@ class P115StrgmSub(_PluginBase):
                 }
             },
             {
-                "cmd": "/手动执行PT订阅",
+                "cmd": "/pt_search",
                 "event": EventType.PluginAction,
                 "desc": "手动执行PT订阅",
                 "category": "订阅",
