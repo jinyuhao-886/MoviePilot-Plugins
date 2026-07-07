@@ -45,7 +45,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.6.98"
+    plugin_version = "1.7.0"
     # 插件作者
     plugin_author = "jinyuhao-886"
     # 作者主页
@@ -160,6 +160,10 @@ class P115StrgmSub(_PluginBase):
     _is_blocked: bool = False
     # 全局配置是否已应用（安装成功首次执行时才修改MP系统配置）
     _global_config_applied: bool = False
+    # 手动PT搜索放行窗口（非0期间跳过仅115拦截），单位：秒的时间戳
+    _bypass_115_intercept_until: float = 0.0
+    # 手动PT搜索放行标志（Search期间为True，搜完立即关闭）
+    _bypass_115_intercept_enabled: bool = False
 
     # 运行时对象
     _pansou_client: Optional[PanSouClient] = None
@@ -342,6 +346,16 @@ class P115StrgmSub(_PluginBase):
 
 
 
+
+    def _relock_sites_to_115(self):
+        """手动PT搜索后立即锁回[-1]，阻止MP持续搜索"""
+        try:
+            self._init_subscribe_handler()
+            self._subscribe_handler.set_blocked_sites_only_115()
+            self._is_blocked = True
+            logger.info("[手动PT搜索] 已重新锁定订阅为仅115网盘")
+        except Exception as e:
+            logger.error(f"[手动PT搜索] 重新锁定失败: {e}")
 
     def _backup_and_enter_blocked(self, reason: str = ""):
         """
@@ -885,6 +899,22 @@ class P115StrgmSub(_PluginBase):
         if all_only_115:
             # 取第一个订阅的名字做展示
             sub_name = all_subs[0].name if all_subs else "未知"
+
+            # ── 手动PT搜索放行：Search期间或60秒异步余量内跳过拦截 ──
+            if self._bypass_115_intercept_enabled:
+                logger.info(
+                    f"[仅115拦截] ♻️ 放行 {sub_name} "
+                    f"({torrent.title}): 手动PT搜索进行中"
+                )
+                return
+            import time as _time
+            if self._bypass_115_intercept_until > _time.time():
+                logger.info(
+                    f"[仅115拦截] ⏳ 放行 {sub_name} "
+                    f"({torrent.title}): 手动PT搜索异步余量"
+                )
+                return
+
             event_data.cancel = True
             event_data.source = "P115StrgmSub-仅115拦截"
             event_data.reason = f"订阅{sub_name}仅限115网盘，拦截PT下载: {torrent.title}"
@@ -1864,7 +1894,7 @@ class P115StrgmSub(_PluginBase):
                 }
             },
             {
-                "cmd": "/pt_search",
+                "cmd": "/手动执行PT订阅",
                 "event": EventType.PluginAction,
                 "desc": "手动执行PT订阅",
                 "category": "订阅",
@@ -2681,6 +2711,10 @@ class P115StrgmSub(_PluginBase):
                             oper.update(s.id, {"sites": None})
             logger.info(f"已恢复 {len(backup)} 个订阅的原始站点")
 
+        # 放行手动PT搜索的下载（SubscribeChain.search同步阻塞，搜完即完成）
+        self._bypass_115_intercept_enabled = True
+        logger.info("手动PT搜索：已放行PT下载，等待搜索完成...")
+
         try:
             SubscribeChain().search(state="R")
         except Exception as e:
@@ -2692,13 +2726,24 @@ class P115StrgmSub(_PluginBase):
                 text=f"搜索出错：{str(e)}",
                 userid=event_data.get("user")
             )
+            # 搜失败也要锁回 [-1]
+            self._relock_sites_to_115()
+            self._bypass_115_intercept_enabled = False
             return
+
+        # 【同步搜索已完成】立即锁回 [-1] 防止MP持续搜索
+        self._relock_sites_to_115()
 
         self.post_message(
             mtype=NotificationType.Plugin,
             channel=event_data.get("channel"),
             title="【PT订阅搜索】执行完成",
-            text="PT订阅搜索已完成。",
+            text="PT订阅搜索已完成，订阅已重新锁定为仅115网盘。",
             userid=event_data.get("user")
         )
+
+        # 60秒余量兜底：期间触发的下载事件（可能异步滞后抵达）继续放行
+        import time as _time
+        self._bypass_115_intercept_until = _time.time() + 60
+        logger.info("手动PT搜索：已锁回订阅，保留60秒异步余量")
 
