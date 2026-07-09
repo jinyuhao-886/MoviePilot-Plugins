@@ -31,7 +31,7 @@ class Doc911Subscribe(_PluginBase):
         "「本月更新【国外剧】」「本月更新【综艺】」在播新剧到MP订阅。"
     )
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/chain.png"
-    plugin_version = "1.2.1"
+    plugin_version = "1.2.2"
     plugin_author = "jinyuhao-886"
     plugin_priority = 10
 
@@ -392,10 +392,10 @@ class Doc911Subscribe(_PluginBase):
         添加单个剧集订阅
         
         流程：
-        1. 尝试通过 SubscribeChain.add() 直接订阅（TMDB识别）
-        2. 如果识别失败（命名不对），调用 MP 智能助手 AI 代理辅助订阅
+        1. 通过 SubscribeChain.add() 直接订阅（内部已集成 CustomIdentifiers + TMDB 搜索）
+        2. 识别失败则跳过，宁可不订也不乱订
         
-        Returns True=已添加/已交给代理, False=跳过(已存在/失败)
+        Returns True=已订阅, False=跳过(已存在/识别失败)
         """
         # 检查是否已订阅（按名称匹配）
         db = SessionFactory()
@@ -405,10 +405,12 @@ class Doc911Subscribe(_PluginBase):
             logger.info(
                 f"911文档订阅添加：[{show['name']} ({show['year']})] 已订阅，跳过"
             )
+            db.close()
             return False
 
         try:
-            # 第一步：尝试直接通过 TMDB 识别订阅
+            # 通过 SubscribeChain.add() 识别并订阅
+            # 内部流程：CustomIdentifiers(自定义识别词) → TMDB 搜索 → 添加订阅
             chain = SubscribeChain()
             add_kwargs = dict(
                 title=show["name"],
@@ -425,30 +427,25 @@ class Doc911Subscribe(_PluginBase):
 
             if subscribe_id:
                 logger.info(
-                    f"911文档订阅添加：已直接订阅 "
+                    f"911文档订阅添加：已订阅 "
                     f"[{show['name']} ({show['year']})] "
                     f"subscribe_id={subscribe_id}"
                 )
+                db.close()
                 return True
             
-            # 第二步：直接识别失败，调用 AI 智能助手辅助
+            # 识别失败，跳过（宁可不订也别乱订）
             logger.warning(
-                f"911文档订阅添加：TMDB识别失败 [{show['name']} ({show['year']})]，"
-                f"调用智能助手处理: {msg}"
+                f"911文档订阅添加：识别失败，跳过 [{show['name']} ({show['year']})]: {msg}"
             )
-            
-            self._call_agent_for_show(show)
-            return True  # 交给代理处理，标记为已处理
+            db.close()
+            return False
             
         except Exception as e:
             logger.error(
                 f"911文档订阅添加：添加订阅异常 [{show['name']}]: {str(e)}"
             )
-            # 异常情况也交给代理试试
-            try:
-                self._call_agent_for_show(show)
-            except:
-                pass
+            db.close()
             return False
 
     def _call_agent_for_show(self, show: Dict):
