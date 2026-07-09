@@ -5,8 +5,7 @@
 """
 import json
 import re
-import os
-import tempfile
+from pathlib import Path
 from datetime import datetime
 from typing import Any, List, Dict, Tuple, Optional
 
@@ -32,8 +31,8 @@ class Doc911Subscribe(_PluginBase):
         "「本月更新【国外剧】」「本月更新【综艺】」在播新剧到MP订阅。"
     )
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/chain.png"
-    plugin_version = "1.1.0"
-    plugin_author = "jyh"
+    plugin_version = "1.1.1"
+    plugin_author = "jinyuhao-886"
     plugin_priority = 10
 
     _enabled = False
@@ -116,8 +115,14 @@ class Doc911Subscribe(_PluginBase):
             if not xlsx_data:
                 return
 
-            # Step 3: 解析在播剧集（过滤掉已完结的旧季）
-            shows = self._parse_shows(xlsx_data)
+            # Step 3: 保存到插件目录（每次覆盖，只保留最新）
+            plugin_dir = self.get_data_path()
+            xlsx_path = plugin_dir / "doc.xlsx"
+            xlsx_path.write_bytes(xlsx_data)
+            logger.info(f"911文档订阅添加：文档已保存到 {xlsx_path}")
+
+            # Step 4: 解析在播剧集（过滤掉已完结的旧季）
+            shows = self._parse_shows(xlsx_path)
             if not shows:
                 logger.info("911文档订阅添加：未找到新的在播剧集")
                 return
@@ -205,7 +210,7 @@ class Doc911Subscribe(_PluginBase):
         """
         return "更新" in cell_text
 
-    def _parse_shows(self, xlsx_data: bytes) -> List[Dict]:
+    def _parse_shows(self, xlsx_path: Path) -> List[Dict]:
         """
         解析xlsx，提取三个区段中的在播剧集
         
@@ -220,13 +225,8 @@ class Doc911Subscribe(_PluginBase):
             [{"name": str, "year": str, "section": str}, ...]
         """
         shows = []
-        tmp_path = None
         try:
-            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
-                f.write(xlsx_data)
-                tmp_path = f.name
-
-            wb = openpyxl.load_workbook(tmp_path, read_only=True, data_only=True)
+            wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
 
             if not wb.sheetnames:
                 logger.warning("911文档订阅添加：xlsx中没有sheet")
@@ -309,9 +309,6 @@ class Doc911Subscribe(_PluginBase):
         except Exception as e:
             logger.error(f"911文档订阅添加：解析xlsx异常: {str(e)}")
             return shows
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
 
     def _extract_show_info(self, cell_text: str) -> Optional[Dict]:
         """
