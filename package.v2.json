@@ -8,7 +8,9 @@
     "icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png",
     "author": "jinyuhao-886",
     "level": 1,
-      "history": {      "v1.7.0": "1. 修复Telegram BOT_COMMAND_INVALID：命令名/手动执行PT订阅→/pt_sub_search（中文不符合Telegram API规范）；2. 其他优化",
+    "history": {
+      "v1.7.0": "1. 修复Telegram BOT_COMMAND_INVALID：命令名/手动执行PT订阅→/pt_sub_search（中文不符合Telegram API规范）；2. 其他优化",
+      "v1.6.99": "1. 新增手动PT订阅命令 /手动执行PT订阅：微信中直接触发MP原生PT订阅搜索；2. 屏蔽态下自动临时恢复订阅站点，完成后守护5分钟内自动回锁[-1]；3. 命令注册在P115StrgmSub插件内，不依赖其他组件",
       "v1.6.6": "1. 新增UI开关「注册自定义规则+预设规则组到MP」，默认关闭，按需开启，不再自动修改用户MP规则；2. 安装安全：全局配置推迟到首次执行时应用",
       "v1.6.3": "1. 修复内置规则自动填充：电视剧默认规则组改为「电视剧非杜比画质优先」、电影改为「电影非杜比画质优先」以匹配实际预设；2. 自动填充配置现可在插件页面上直接设置；3. 移除对独立 SubscribeGroup 插件的依赖说明（全部内置）",
       "v1.6.2": "1. 内置 SubscribeGroup 功能：新增订阅自动填充过滤规则组（电视剧→规则组+开启洗版，电影→规则组）；2. 自动叠加 DoVi 硬拒绝；3. 恢复 global_exclude 字段定义",
@@ -19,6 +21,19 @@
       "v1.6.7": "1. 修复 episode_priority 脏数据根因：云升级路径写入 dict 而非纯 int，导致 MP 订阅 API 500；2. 进度自愈每次同步独立执行，不再受每日一次限制；3. 修复 PT 洗版首次下载误报「0→97分」升级通知；4. 所有 episode_priority 写入路径加装纯 int 防护",
       "v1.6.91": "1. 新增「强制重评分」API+UI按钮：清空旧episode_priority，重新扫描磁盘strm文件打分并覆盖，同时清理无效脏数据；2. UI新增评分工具按钮组（整理记录评分+强制重评分）",
       "v1.6.92": "修复强制重评分使用strm文件大小（~200字节）而非115实际文件大小，导致体积评分全为20分的bug"
+    }
+  },
+  "Doc911Subscribe": {
+    "name": "911文档订阅添加",
+    "release": true,
+    "description": "每天21:01扫描金山文档，自动添加「本月更新【国产剧】」「本月更新【国外剧】」「本月更新【综艺】」在播新剧到MP订阅。内置TMDB识别+AI智能助手辅助识别。",
+    "labels": "订阅,文档,KDocs,金山文档,自动订阅",
+    "version": "1.1.0",
+    "icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/chain.png",
+    "author": "jinyuhao-886",
+    "level": 1,
+    "history": {
+      "v1.1.0": "1. 初始版本：每天21:01自动扫描KDocs文档，解析三个区段（国产剧/国外剧/综艺）在播剧集；2. 内置TMDB识别+AI智能助手辅助识别；3. 支持Cookie配置，定时任务自动执行"
     }
   }
 }
