@@ -17,7 +17,7 @@ from apscheduler.triggers.cron import CronTrigger
 from app.log import logger
 from app.plugins import _PluginBase
 from app.chain.subscribe import SubscribeChain
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, NotificationType
 from app.db.subscribe_oper import Subscribe, SubscribeOper
 from app.db import SessionFactory
 
@@ -31,7 +31,7 @@ class Doc911Subscribe(_PluginBase):
         "「本月更新【国外剧】」「本月更新【综艺】」在播新剧到MP订阅。"
     )
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/chain.png"
-    plugin_version = "1.2.2"
+    plugin_version = "1.0.0"
     plugin_author = "jinyuhao-886"
     plugin_priority = 10
 
@@ -434,10 +434,21 @@ class Doc911Subscribe(_PluginBase):
                 db.close()
                 return True
             
-            # 识别失败，跳过（宁可不订也别乱订）
+            # 识别失败，发送通知提醒
             logger.warning(
                 f"911文档订阅添加：识别失败，跳过 [{show['name']} ({show['year']})]: {msg}"
             )
+            try:
+                self.post_message(
+                    mtype=NotificationType.Subscribe,
+                    title=f"新增订阅未能识别 ⚠️",
+                    text=f"剧名：{show['name']} ({show['year']})\n"
+                         f"类型：{show.get('section', '剧集')}\n"
+                         f"原因：{msg}\n"
+                         f"建议：可手动搜索TMDB或添加自定义识别词",
+                )
+            except Exception as e:
+                logger.error(f"911文档订阅添加：发送通知失败: {e}")
             db.close()
             return False
             
