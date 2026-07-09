@@ -31,9 +31,19 @@ class Doc911Subscribe(_PluginBase):
         "「本月更新【国外剧】」「本月更新【综艺】」在播新剧到MP订阅。"
     )
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/chain.png"
-    plugin_version = "1.1.1"
+    plugin_version = "1.2.0"
     plugin_author = "jinyuhao-886"
     plugin_priority = 10
+
+    # 中文数字→整数映射（覆盖1~30，够用了）
+    _CN_NUMS = {
+        "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+        "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+        "十一": 11, "十二": 12, "十三": 13, "十四": 14, "十五": 15,
+        "十六": 16, "十七": 17, "十八": 18, "十九": 19, "二十": 20,
+        "二十一": 21, "二十二": 22, "二十三": 23, "二十四": 24, "二十五": 25,
+        "二十六": 26, "二十七": 27, "二十八": 28, "二十九": 29, "三十": 30,
+    }
 
     _enabled = False
     _cookies = ""
@@ -312,17 +322,17 @@ class Doc911Subscribe(_PluginBase):
 
     def _extract_show_info(self, cell_text: str) -> Optional[Dict]:
         """
-        从单元格文本中提取剧名和年份
-        
+        从单元格文本中提取剧名、年份和季数
+
         格式示例:
             【4K国产剧】百花杀 (2026)[爱情 古装][孟子义].2160P.共36集全更新04
             【HD韩剧】金特务：本色回归 김부장 (2026)[动作][苏志燮 崔大勋].1080P.
             【4K美剧】龙之家族 第三季 (2026)[动作 奇幻 冒险].2160P.HDR.DV.共8集.更新03
             【4K综艺】地球超新鲜 第二季 (2026)[真人秀].1080P+4K.更新7-5.第二期下
             【4K综艺】中餐厅 第十季 (2026)[真人秀].2160P.共12期.第3期.更新7-4
-        
+
         Returns:
-            {"name": str, "year": str}
+            {"name": str, "year": str, "season": Optional[int]}
         """
         # 匹配 】和 (年份) 之间的剧名
         match = re.search(r"】(.+?) \((\d{4})\)", cell_text)
@@ -334,7 +344,17 @@ class Doc911Subscribe(_PluginBase):
             name = re.sub(r"[\[\]\.\,\s]+$", "", name)
 
             if name and year and len(year) == 4:
-                return {"name": name, "year": year}
+                result = {"name": name, "year": year, "season": None}
+                # 提取季数：如 "龙之家族 第三季" → season=3
+                season_match = re.search(r"第([一二三四五六七八九十百]+)季$", name)
+                if season_match:
+                    cn = season_match.group(1)
+                    season = self._CN_NUMS.get(cn)
+                    if season:
+                        result["season"] = season
+                        # 从名字中去掉" 第X季"
+                        result["name"] = name[:season_match.start()].strip()
+                return result
 
         return None
 
@@ -364,6 +384,7 @@ class Doc911Subscribe(_PluginBase):
             add_kwargs = dict(
                 title=show["name"],
                 year=show["year"],
+                season=show.get("season"),
                 mtype=MediaType.TV,
                 source="911文档订阅添加",
                 message=True,
@@ -419,10 +440,15 @@ class Doc911Subscribe(_PluginBase):
             f"剧名：{show['name']}\n"
             f"年份：{show['year']}\n"
             f"类型：{section_label}（电视剧）\n"
+        )
+        if show.get("season"):
+            prompt += f"季数：第{show['season']}季\n"
+        prompt += (
             f"\n"
             f"注意：文档中的剧名可能不是TMDB标准名称，"
             f"请先用 search_media 工具搜索正确的TMDB条目，"
             f"确认后再用 add_subscribe 工具添加订阅。"
+            f"注意正确指定季数。"
             f"如果是综艺节目，请搜索正确的综艺节目名称。"
         )
         

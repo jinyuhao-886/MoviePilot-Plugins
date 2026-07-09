@@ -28,13 +28,14 @@
     "release": true,
     "description": "每天21:01扫描金山文档，自动添加「本月更新【国产剧】」「本月更新【国外剧】」「本月更新【综艺】」在播新剧到MP订阅。内置TMDB识别+AI智能助手辅助识别。",
     "labels": "订阅,文档,KDocs,金山文档,自动订阅",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "icon": "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/chain.png",
     "author": "jinyuhao-886",
     "level": 1,
     "history": {
       "v1.1.0": "1. 初始版本：每天21:01自动扫描KDocs文档，解析三个区段（国产剧/国外剧/综艺）在播剧集；2. 内置TMDB识别+AI智能助手辅助识别；3. 支持Cookie配置，定时任务自动执行",
-      "v1.1.1": "1. 修复SubscribeOper.list() → Subscribe.get_by_title()；2. 文档保存到插件目录doc.xlsx，每次覆盖保留最新；3. 作者名改为jinyuhao-886"
+      "v1.1.1": "1. 修复SubscribeOper.list() → Subscribe.get_by_title()；2. 文档保存到插件目录doc.xlsx，每次覆盖保留最新；3. 作者名改为jinyuhao-886",
+      "v1.2.0": "1. 修复季节订阅错误：从剧名提取\"第X季\"传参chain.add(season=X)，避免默认订阅S01；2. 作者名jinyuhao-886；3. doc.xlsx本地存储"
     }
   }
 }
