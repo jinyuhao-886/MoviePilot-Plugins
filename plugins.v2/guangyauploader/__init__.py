@@ -118,7 +118,8 @@ class GuangyaUploader(_PluginBase):
         self._upload_extensions = config.get("upload_extensions", ".mkv,.mp4,.ts,.iso,.bdmv,.avi,.wmv,.mov,.flv,.m2ts")
         self._only_new_files = config.get("only_new_files", True)
         self._run_immediately = config.get("run_immediately", False)
-        self._organize_rename_format = (config.get("organize_rename_format", "") or "").strip()
+        self._organize_movie_rename_format = (config.get("organize_movie_rename_format", "") or "").strip()
+        self._organize_tv_rename_format = (config.get("organize_tv_rename_format", "") or "").strip()
         self._auto_share = config.get("auto_share", False)
 
         # 绕过系统配置缓存，直接从 DB 读取最新配置
@@ -566,18 +567,22 @@ class GuangyaUploader(_PluginBase):
             transferchain = TransferChain()
 
             # ----- 自定义重命名模板逻辑 -----
-            # 如果用户设置了自定义格式，临时覆写系统 settings
+            # 分别覆写电影/电视剧模板，哪个非空就用哪个
             from app.core.config import settings
-            _overridden = False
+            _movie_overridden = False
+            _tv_overridden = False
             _old_movie = None
             _old_tv = None
-            if self._organize_rename_format:
+            if self._organize_movie_rename_format:
                 _old_movie = settings.MOVIE_RENAME_FORMAT
+                settings.MOVIE_RENAME_FORMAT = self._organize_movie_rename_format
+                _movie_overridden = True
+                logger.info(f"【光鸭上传】使用自定义电影模板")
+            if self._organize_tv_rename_format:
                 _old_tv = settings.TV_RENAME_FORMAT
-                settings.MOVIE_RENAME_FORMAT = self._organize_rename_format
-                settings.TV_RENAME_FORMAT = self._organize_rename_format
-                _overridden = True
-                logger.info(f"【光鸭上传】使用自定义重命名模板: {self._organize_rename_format}")
+                settings.TV_RENAME_FORMAT = self._organize_tv_rename_format
+                _tv_overridden = True
+                logger.info(f"【光鸭上传】使用自定义电视剧模板")
 
             succeeded = 0
             failed = 0
@@ -622,9 +627,11 @@ class GuangyaUploader(_PluginBase):
                         failed += 1
             finally:
                 # 恢复系统重命名模板
-                if _overridden:
+                if _movie_overridden:
                     settings.MOVIE_RENAME_FORMAT = _old_movie
+                if _tv_overridden:
                     settings.TV_RENAME_FORMAT = _old_tv
+                if _movie_overridden or _tv_overridden:
                     logger.info("【光鸭上传】已恢复系统重命名模板")
 
             msg = f"整理完成: 成功 {succeeded} 个, 失败 {failed} 个"
@@ -719,11 +726,18 @@ class GuangyaUploader(_PluginBase):
                     ]}
                 ]},
                 {"component": "VRow", "content": [
-                    {"component": "VCol", "props": {"cols": 12, "md": 8}, "content": [
+                    {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [
                         {"component": "VTextField", "props": {
-                            "model": "organize_rename_format", "label": "🔄 整理重命名模板（Jinja2）",
-                            "placeholder": "留空=使用系统默认模板",
-                            "hint": "自定义重命名格式，例如去掉压制组后缀"
+                            "model": "organize_movie_rename_format", "label": "🎬 电影整理模板（Jinja2）",
+                            "placeholder": "留空=使用系统电影模板",
+                            "hint": "电影重命名格式，例如去掉压制组后缀"
+                        }}
+                    ]},
+                    {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [
+                        {"component": "VTextField", "props": {
+                            "model": "organize_tv_rename_format", "label": "📺 电视剧整理模板（Jinja2）",
+                            "placeholder": "留空=使用系统电视剧模板",
+                            "hint": "电视剧重命名格式，包含季/集结构"
                         }}
                     ]},
                     {"component": "VCol", "props": {"cols": 12, "md": 2}, "content": [
@@ -751,7 +765,8 @@ class GuangyaUploader(_PluginBase):
             "upload_extensions": ".mkv,.mp4,.ts,.iso,.bdmv,.avi,.wmv,.mov,.flv,.m2ts",
             "only_new_files": True, "run_immediately": False,
             "auto_share": False,
-            "organize_rename_format": "{{title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/{{title}}{% if year %} ({{year}}){% endif %}{% if videoFormat %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% endif %}{{fileExt}}",
+            "organize_movie_rename_format": "{{title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/{{title}}{% if year %} ({{year}}){% endif %}{% if videoFormat %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% endif %}{{fileExt}}",
+            "organize_tv_rename_format": "{{title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/Season {{'%02d'|format(season|int)}}/{{title}}{% if year %} ({{year}}){% endif %} - {{season_episode}} - {% if episode_title %}{{episode_title}}{% else %}第 {{episode}} 集{% endif %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if hdr %}.{{hdr}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{{fileExt}}",
         }
 
     # ========================================================
