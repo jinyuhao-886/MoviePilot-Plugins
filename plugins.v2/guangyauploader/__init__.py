@@ -893,5 +893,48 @@ class GuangyaUploader(_PluginBase):
                 "type": "info",
                 "text": f"📁 已整理目录: {self._organized_dir} | 点击「分享」按钮生成链接，点击「链接」获取下载直链"
             }},
+            # 分享链接管理（折叠面板）
+            *([{
+                "component": "VExpansionPanels", "props": {"variant": "accordion", "class": "mb-3"},
+                "content": [{
+                    "component": "VExpansionPanel", "content": [
+                        {"component": "VExpansionPanelTitle", "props": {
+                            "text": f"📋 分享链接管理（{len(self._share_records)}条）"
+                        }},
+                        {"component": "VExpansionPanelText", "content": [
+                            *[{
+                                "component": "VCard", "props": {"variant": "outlined", "class": "mb-2"},
+                                "content": [{
+                                    "component": "VCardText", "content": [
+                                        {"component": "VRow", "content": [
+                                            {"component": "VCol", "props": {"cols": 12, "md": 4},
+                                             "content": [{"component": "VListItemTitle",
+                                                          "props": {"text": f"🎬 {rec.file_name}"}}]},
+                                            {"component": "VCol", "props": {"cols": 12, "md": 6},
+                                             "content": [{"component": "VTextField", "props": {
+                                                 "model": "", "label": "分享链接",
+                                                 "value": rec.share_url, "readonly": True, "dense": True,
+                                             }}]},
+                                            {"component": "VCol", "props": {"cols": 6, "md": 1},
+                                             "content": [{"component": "VChip", "props": {
+                                                 "size": "small", "color": "green"},
+                                                 "text": f"👁 {rec.hits}"}]},
+                                            {"component": "VCol", "props": {"cols": 6, "md": 1},
+                                             "content": [{"component": "VChip", "props": {
+                                                 "size": "small", "color": "grey"},
+                                                 "text": rec.share_time[-8:] if rec.share_time else ""}]},
+                                        ]}
+                                    ]
+                                }]
+                            } for rec in self._share_records],
+                            *([] if self._share_records else [{
+                                "component": "VAlert", "props": {
+                                    "type": "info", "text": "暂无分享记录。整理文件后会自动分享，或点击文件旁的「分享」按钮手动创建。"
+                                }
+                            }])
+                        ]}
+                    ]
+                }]
+            }] if self._share_records else []),
             *rows,
         ]
