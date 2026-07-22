@@ -765,8 +765,8 @@ class GuangyaUploader(_PluginBase):
             "upload_extensions": ".mkv,.mp4,.ts,.iso,.bdmv,.avi,.wmv,.mov,.flv,.m2ts",
             "only_new_files": True, "run_immediately": False,
             "auto_share": False,
-            "organize_movie_rename_format": "{{title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/{{title}}{% if year %} ({{year}}){% endif %}{% if videoFormat %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% endif %}{{fileExt}}",
-            "organize_tv_rename_format": "{{title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/Season {{'%02d'|format(season|int)}}/{{title}}{% if year %} ({{year}}){% endif %} - {{season_episode}} - {% if episode_title %}{{episode_title}}{% else %}第 {{episode}} 集{% endif %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if hdr %}.{{hdr}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{{fileExt}}",
+            "organize_movie_rename_format": "{{en_title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/{{en_title}}{% if year %} ({{year}}){% endif %}{% if videoFormat %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% endif %}{{fileExt}}",
+            "organize_tv_rename_format": "{{en_title}}{% if year %} ({{year}}){% endif %} {tmdbid={{tmdbid}}}/Season {{'%02d'|format(season|int)}}/{{en_title}}{% if year %} ({{year}}){% endif %} - {{season_episode}} - {% if episode_title %}{{episode_title}}{% else %}第 {{episode}} 集{% endif %} - {{videoFormat}}{% if edition %}.{{edition}}{% endif %}{% if hdr %}.{{hdr}}{% endif %}{% if videoCodec %}.{{videoCodec}}{% endif %}{% if audioCodec %}.{{audioCodec}}{% endif %}{{fileExt}}",
         }
 
     # ========================================================
